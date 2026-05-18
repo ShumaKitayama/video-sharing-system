@@ -16,6 +16,12 @@ import (
 	"video-sharing-system/server/internal/streaming"
 )
 
+const (
+	viewDedupeMinInterval = 12 * time.Second
+	viewDedupeMapMax      = 8192
+	viewDedupeStaleAge    = 3 * time.Minute
+)
+
 type StreamService struct {
 	videos *repository.VideoRepository
 	store  *storage.VideoStorage
@@ -39,16 +45,37 @@ func streamClientKey(viewerUserID int64, remoteIP string) string {
 	return "ip:" + remoteIP
 }
 
+// pruneViewDedupeLocked drops stale entries and, if still over capacity, evicts arbitrary keys.
+// Caller must hold s.mu.
+func (s *StreamService) pruneViewDedupeLocked(now time.Time) {
+	if len(s.last) <= viewDedupeMapMax {
+		return
+	}
+	cutoff := now.Add(-viewDedupeStaleAge)
+	for k, t := range s.last {
+		if t.Before(cutoff) {
+			delete(s.last, k)
+		}
+	}
+	for len(s.last) > viewDedupeMapMax {
+		for k := range s.last {
+			delete(s.last, k)
+			break
+		}
+	}
+}
+
 func (s *StreamService) maybeBumpView(internalVideoID int64, clientKey string) {
 	key := fmt.Sprintf("%d:%s", internalVideoID, clientKey)
 
 	s.mu.Lock()
 	now := time.Now()
-	if prev, ok := s.last[key]; ok && now.Sub(prev) < 12*time.Second {
+	if prev, ok := s.last[key]; ok && now.Sub(prev) < viewDedupeMinInterval {
 		s.mu.Unlock()
 		return
 	}
 	s.last[key] = now
+	s.pruneViewDedupeLocked(now)
 	s.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

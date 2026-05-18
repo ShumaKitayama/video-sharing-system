@@ -79,11 +79,14 @@ func main() {
 		}
 	}()
 
+	// WriteTimeout caps hung slow clients; large enough for LAN classroom streaming (Range requests).
+	const streamWriteTimeout = 45 * time.Minute
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      engine,
 		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 0,
+		WriteTimeout: streamWriteTimeout,
 		IdleTimeout:  120 * time.Second,
 	}
 
