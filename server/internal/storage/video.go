@@ -57,8 +57,13 @@ func (s *VideoStorage) PrepareWritableDir(ctx context.Context) error {
 
 // SaveUploadedVideo streams src into a new UUID-named object under videos/YYYY/MM/.
 func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mime string, originalFilename string) (storageKey string, written int64, err error) {
-	_ = ctx
 	_ = originalFilename
+
+	select {
+	case <-ctx.Done():
+		return "", 0, ctx.Err()
+	default:
+	}
 
 	ext := validation.ExtForMIME(mime)
 	if ext == "" {
@@ -83,7 +88,8 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 	}
 
 	buf := make([]byte, copyBufferSize)
-	written, err = io.CopyBuffer(f, src, buf)
+	wrapped := readerWithContext(ctx, src)
+	written, err = io.CopyBuffer(f, wrapped, buf)
 	cerr := f.Close()
 	if err != nil {
 		_ = os.Remove(tmpPath)
@@ -107,6 +113,13 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 		headerSize = int(written)
 	}
 	header := make([]byte, headerSize)
+	select {
+	case <-ctx.Done():
+		_ = os.Remove(tmpPath)
+		return "", 0, ctx.Err()
+	default:
+	}
+
 	hf, err := os.Open(tmpPath)
 	if err != nil {
 		_ = os.Remove(tmpPath)
@@ -125,6 +138,13 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 		return "", 0, fmt.Errorf("unsupported media type")
 	}
 
+	select {
+	case <-ctx.Done():
+		_ = os.Remove(tmpPath)
+		return "", 0, ctx.Err()
+	default:
+	}
+
 	if err := os.Rename(tmpPath, fullPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", 0, err
@@ -132,6 +152,28 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 
 	key := filepath.ToSlash(filepath.Join(relDir, fileName))
 	return key, written, nil
+}
+
+// readerWithContext wraps r so reads observe ctx cancellation without buffering.
+func readerWithContext(ctx context.Context, r io.Reader) io.Reader {
+	if ctx == nil {
+		return r
+	}
+	return &ctxReader{ctx: ctx, r: r}
+}
+
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (cr *ctxReader) Read(p []byte) (int, error) {
+	select {
+	case <-cr.ctx.Done():
+		return 0, cr.ctx.Err()
+	default:
+	}
+	return cr.r.Read(p)
 }
 
 func sniffVideoMIME(header []byte) string {
