@@ -14,52 +14,25 @@ import (
 )
 
 func parseVideoUpload(c *gin.Context) (title string, description string, mime string, filename string, file io.ReadCloser, err error) {
-	mr, err := c.Request.MultipartReader()
+	// Parse multipart via net/http so field order does not discard the file body.
+	// (Calling MultipartReader.NextPart() after selecting "file" drains the file before it can be read.)
+	const maxMemory = 32 << 20
+	if err := c.Request.ParseMultipartForm(maxMemory); err != nil {
+		return "", "", "", "", nil, err
+	}
+	title = strings.TrimSpace(c.PostForm("title"))
+	description = c.PostForm("description")
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return "", "", "", "", nil, fmt.Errorf("missing file")
+	}
+	rc, err := fh.Open()
 	if err != nil {
 		return "", "", "", "", nil, err
 	}
-
-	var fileRC io.ReadCloser
-
-	for {
-		part, err := mr.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", "", "", "", nil, err
-		}
-
-		switch part.FormName() {
-		case "title":
-			b, rerr := io.ReadAll(io.LimitReader(part, 256))
-			_ = part.Close()
-			if rerr != nil {
-				return "", "", "", "", nil, rerr
-			}
-			title = strings.TrimSpace(string(b))
-		case "description":
-			b, rerr := io.ReadAll(io.LimitReader(part, 4096))
-			_ = part.Close()
-			if rerr != nil {
-				return "", "", "", "", nil, rerr
-			}
-			description = string(b)
-		case "file":
-			mime = part.Header.Get("Content-Type")
-			filename = part.FileName()
-			fileRC = part
-		default:
-			_, _ = io.Copy(io.Discard, part)
-			_ = part.Close()
-		}
-	}
-
-	if fileRC == nil {
-		return "", "", "", "", nil, fmt.Errorf("missing file")
-	}
-
-	return title, description, mime, filename, fileRC, nil
+	mime = fh.Header.Get("Content-Type")
+	filename = fh.Filename
+	return title, description, mime, filename, rc, nil
 }
 
 func setSessionCookie(c *gin.Context, cfg config.Config, token string) {
