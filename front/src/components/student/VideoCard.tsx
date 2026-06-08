@@ -62,9 +62,6 @@ export default function VideoCard({ video }: VideoCardProps) {
 
         {/* 右サイドアクションボタン */}
         <div className="video-card__actions">
-          <button className="video-card__action-btn" onClick={(e) => e.stopPropagation()} title="共有">
-            ↗
-          </button>
           <button className="video-card__action-btn" onClick={(e) => e.stopPropagation()} title="いいね">
             ♡
           </button>
