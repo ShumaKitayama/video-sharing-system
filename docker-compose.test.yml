@@ -1,0 +1,36 @@
+# Test override for the integration test suite.
+#
+# Usage (run from the repository root):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm tester
+#
+# This starts the `db` service (from docker-compose.yml), waits until it is
+# healthy, then runs the Go integration tests in server/internal/apitest
+# against that real PostgreSQL instance. Uploaded files are written to a
+# throwaway temp directory inside the container, so nothing leaks onto the host.
+
+services:
+  tester:
+    image: golang:1.22-alpine
+    working_dir: /src
+    environment:
+      # The tests connect here; this matches the db service credentials.
+      TEST_DATABASE_URL: postgres://postgres:postgres@db:5432/videoshare?sslmode=disable
+      MIGRATIONS_DIR: /src/migrations
+      # Keep the Go build/module caches on a named volume between runs.
+      GOFLAGS: -mod=mod
+    volumes:
+      - ./server:/src
+      - videoshare_gocache:/go/pkg/mod
+      - videoshare_gobuild:/root/.cache/go-build
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "apk add --no-cache git >/dev/null 2>&1 &&
+             go vet ./... &&
+             go test ./internal/apitest/... -v -count=1"
+
+volumes:
+  videoshare_gocache:
+  videoshare_gobuild:
