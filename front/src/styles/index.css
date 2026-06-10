@@ -230,10 +230,55 @@ ul, ol { list-style: none; }
 
 .fade-in { animation: fadeIn 0.4s ease; }
 
+/* ===== IMMERSIVE WATCH PAGE ===== */
+.watch-immersive__player { position: relative; width: 100%; min-height: 70vh; border-radius: var(--radius-lg); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+
+/* 再生ボタン */
+.watch-immersive__play { display: flex; flex-direction: column; align-items: center; gap: 12px; z-index: 2; }
+.watch-immersive__play-btn { width: 72px; height: 52px; background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink)); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; cursor: pointer; box-shadow: 0 4px 24px rgba(139,92,246,0.4); transition: transform var(--transition), box-shadow var(--transition); }
+.watch-immersive__play-btn:hover { transform: scale(1.1); box-shadow: 0 6px 32px rgba(139,92,246,0.5); }
+.watch-immersive__play-text { font-size: 13px; color: rgba(255,255,255,0.5); }
+
+/* 戻るボタン */
+.watch-immersive__back { position: absolute; top: 16px; left: 16px; z-index: 10; padding: 8px 16px; background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); border-radius: 20px; color: #fff; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: background var(--transition); }
+.watch-immersive__back:hover { background: rgba(0,0,0,0.6); }
+
+/* 右サイドアクション */
+.watch-immersive__side-actions { position: absolute; right: 28px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 20px; z-index: 10; }
+.watch-immersive__action-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; color: #fff; transition: transform var(--transition); }
+.watch-immersive__action-btn:hover { transform: scale(1.15); }
+.watch-immersive__action-btn--active .watch-immersive__action-icon { filter: none; }
+.watch-immersive__action-icon { width: 44px; height: 44px; border-radius: var(--radius-full); background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; font-size: 20px; transition: background var(--transition); }
+.watch-immersive__action-btn:hover .watch-immersive__action-icon { background: rgba(255,255,255,0.28); }
+.watch-immersive__action-label { font-size: 11px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+
+/* 下部オーバーレイ */
+.watch-immersive__bottom { position: absolute; bottom: 0; left: 0; right: 0; z-index: 5; padding: 60px 100px 20px 20px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); }
+.watch-immersive__user { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer; }
+.watch-immersive__username { font-size: 15px; font-weight: 700; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+.watch-immersive__time { font-size: 12px; color: rgba(255,255,255,0.6); }
+.watch-immersive__title { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.4; margin-bottom: 6px; text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+.watch-immersive__desc { font-size: 13px; color: rgba(255,255,255,0.75); line-height: 1.5; cursor: pointer; }
+.watch-immersive__desc--collapsed { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.watch-immersive__desc-toggle { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.9); background: none; border: none; cursor: pointer; margin-top: 4px; padding: 0; }
+
+/* コメントパネル */
+.watch-immersive__comments-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); z-index: 200; display: flex; justify-content: flex-end; animation: fadeIn 0.2s ease; }
+.watch-immersive__comments-panel { width: 400px; max-width: 90vw; height: 100%; background: var(--bg-elevated); box-shadow: -8px 0 32px rgba(0,0,0,0.15); display: flex; flex-direction: column; animation: slideInRight 0.3s ease; }
+.watch-immersive__comments-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.watch-immersive__comments-title { font-size: 16px; font-weight: 700; }
+.watch-immersive__comments-close { width: 32px; height: 32px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; font-size: 16px; transition: background var(--transition); cursor: pointer; border: none; background: none; color: var(--text-primary); }
+.watch-immersive__comments-close:hover { background: var(--bg-hover); }
+.watch-immersive__comments-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.watch-immersive__comment-input-wrap { margin-bottom: 20px; }
+.watch-immersive__comment-input { width: 100%; padding: 10px 14px; background: var(--bg-primary); border: 1.5px solid var(--border-color); border-radius: var(--radius-sm); font-size: 14px; color: var(--text-primary); outline: none; transition: border-color var(--transition); }
+.watch-immersive__comment-input:focus { border-color: var(--accent-purple); }
+.watch-immersive__comment-input::placeholder { color: var(--text-disabled); }
+
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1200px) {
-  .watch { flex-direction: column; }
-  .watch__sidebar { width: 100%; }
   .search-result__thumb { width: 260px; height: 146px; }
 }
 @media (max-width: 700px) {
@@ -241,4 +286,6 @@ ul, ol { list-style: none; }
   .search-result { flex-direction: column; }
   .search-result__thumb { width: 100%; height: 0; padding-top: 56.25%; }
   .header__center { display: none; }
+  .watch-immersive__player { min-height: 60vh; }
+  .watch-immersive__comments-panel { width: 100%; }
 }
