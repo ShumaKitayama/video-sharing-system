@@ -1,0 +1,23 @@
+name: Backend Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: backend-integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run Go integration tests (Docker + PostgreSQL)
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm tester
