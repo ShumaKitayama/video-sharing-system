@@ -1,6 +1,8 @@
 /* ===================================================
  * components/student/VideoCard.tsx
- * [学生編集可] 動画サムネイルカード
+ * [学生編集可] 動画カード — ソーシャルフィードスタイル
+ * アバター+ユーザー名がサムネイル上にオーバーレイ、
+ * 右側にシェア/ハートボタン配置
  * =================================================== */
 
 import { useNavigate } from "react-router-dom";
@@ -43,23 +45,35 @@ export default function VideoCard({ video }: VideoCardProps) {
   return (
     <div className="video-card fade-in" onClick={() => navigate(`/watch/${video.id}`)} id={`video-card-${video.id}`}>
       <div className="video-card__thumbnail">
-        <div className="video-card__thumbnail-img" style={{ background: video.thumbnail_url || "var(--bg-elevated)" }}>
+        <div className="video-card__thumbnail-img" style={{ background: video.thumbnail_url || "var(--bg-hover)" }}>
           🎬
         </div>
-        <span className="video-card__duration">{formatDuration(video.duration_seconds)}</span>
+
+        {/* オーバーレイ: ユーザー名 + 再生時間 + アクション */}
+        <div className="video-card__overlay">
+          <div className="video-card__overlay-top" onClick={(e) => { e.stopPropagation(); navigate(`/channel/${video.uploader.id}`); }}>
+            <ChannelAvatar displayName={video.uploader.display_name} size={32} />
+            <span className="video-card__overlay-username">{video.uploader.display_name}</span>
+          </div>
+          <div className="video-card__overlay-bottom">
+            <span className="video-card__duration">{formatDuration(video.duration_seconds)}</span>
+          </div>
+        </div>
+
+        {/* 右サイドアクションボタン */}
+        <div className="video-card__actions">
+          <button className="video-card__action-btn" onClick={(e) => e.stopPropagation()} title="いいね">
+            ♡
+          </button>
+        </div>
       </div>
+
       <div className="video-card__info">
-        <ChannelAvatar displayName={video.uploader.display_name} size={36} />
-        <div className="video-card__details">
-          <h3 className="video-card__title">{video.title}</h3>
-          <div className="video-card__channel" onClick={(e) => { e.stopPropagation(); navigate(`/channel/${video.uploader.id}`); }}>
-            {video.uploader.display_name}
-          </div>
-          <div className="video-card__meta">
-            <span>{formatViewCount(video.view_count)} 回視聴</span>
-            <span className="video-card__meta-dot" />
-            <span>{formatTimeAgo(video.created_at)}</span>
-          </div>
+        <h3 className="video-card__title">{video.title}</h3>
+        <div className="video-card__meta">
+          <span>{formatViewCount(video.view_count)} 回視聴</span>
+          <span className="video-card__meta-dot" />
+          <span>{formatTimeAgo(video.created_at)}</span>
         </div>
       </div>
     </div>

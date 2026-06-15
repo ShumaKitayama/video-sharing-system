@@ -16,11 +16,8 @@ function SkeletonCard() {
     <div className="video-card">
       <div className="skeleton skeleton--thumb" />
       <div className="video-card__info">
-        <div className="skeleton skeleton--avatar" />
-        <div className="video-card__details">
-          <div className="skeleton skeleton--title" />
-          <div className="skeleton skeleton--text" />
-        </div>
+        <div className="skeleton skeleton--title" />
+        <div className="skeleton skeleton--text" />
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 /* ===================================================
  * components/internal/Header.tsx
  * [保護] ヘッダーバー（ロゴ・検索・ユーザーメニュー）
+ * サイドバートグル削除済み
  * =================================================== */
 
 import { useState, useRef, useEffect } from "react";
@@ -8,14 +9,13 @@ import { useNavigate } from "react-router-dom";
 import type { User } from "../../types";
 
 interface HeaderProps {
-  onToggleSidebar: () => void;
   onOpenUpload: () => void;
   onOpenLogin: () => void;
   user: User | null;
   onLogout: () => void;
 }
 
-export default function Header({ onToggleSidebar, onOpenUpload, onOpenLogin, user, onLogout }: HeaderProps) {
+export default function Header({ onOpenUpload, onOpenLogin, user, onLogout }: HeaderProps) {
   const [query, setQuery] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -41,7 +41,6 @@ export default function Header({ onToggleSidebar, onOpenUpload, onOpenLogin, use
   return (
     <header className="header" id="main-header">
       <div className="header__left">
-        <button className="header__menu-btn" onClick={onToggleSidebar} id="sidebar-toggle" aria-label="メニュー">☰</button>
         <a className="header__logo" onClick={() => navigate("/")} style={{ cursor: "pointer" }} id="logo-link">
           <span className="header__logo-icon">▶</span>
           <span>VideoShare</span>
@@ -53,7 +52,7 @@ export default function Header({ onToggleSidebar, onOpenUpload, onOpenLogin, use
           <input
             className="header__search-input"
             type="text"
-            placeholder="検索"
+            placeholder="動画を検索..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             id="search-input"
@@ -77,7 +76,7 @@ export default function Header({ onToggleSidebar, onOpenUpload, onOpenLogin, use
             {showMenu && (
               <div className="header__user-menu">
                 <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border-color)" }}>
-                  <div style={{ fontWeight: 500 }}>{user.display_name}</div>
+                  <div style={{ fontWeight: 600 }}>{user.display_name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>@{user.username}</div>
                 </div>
                 <button className="header__user-menu-item" onClick={() => { navigate(`/channel/${user.id}`); setShowMenu(false); }}>
@@ -91,7 +90,7 @@ export default function Header({ onToggleSidebar, onOpenUpload, onOpenLogin, use
           </div>
         ) : (
           <button className="header__login-btn" onClick={onOpenLogin} id="login-btn">
-            👤 ログイン
+            ログイン
           </button>
         )}
       </div>
