@@ -6,17 +6,19 @@
  * =================================================== */
 
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import type { Video } from "../../types";
 import ChannelAvatar from "./ChannelAvatar";
+import VideoPreview from "../internal/VideoPreview";
 
 interface VideoCardProps {
   video: Video;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (seconds === null) return "0:00";
+function formatDuration(seconds: number | null | undefined): string | null {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
   const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -41,13 +43,19 @@ function formatTimeAgo(dateStr: string): string {
 
 export default function VideoCard({ video }: VideoCardProps) {
   const navigate = useNavigate();
+  const [detectedDuration, setDetectedDuration] = useState<number | null>(null);
+  const displayDuration = video.duration_seconds ?? detectedDuration;
+  const durationLabel = formatDuration(displayDuration);
 
   return (
     <div className="video-card fade-in" onClick={() => navigate(`/watch/${video.id}`)} id={`video-card-${video.id}`}>
       <div className="video-card__thumbnail">
-        <div className="video-card__thumbnail-img" style={{ background: video.thumbnail_url || "var(--bg-hover)" }}>
-          🎬
-        </div>
+        <VideoPreview
+          videoId={video.id}
+          onDurationLoaded={(seconds) =>
+            setDetectedDuration((prev) => prev ?? seconds)
+          }
+        />
 
         {/* オーバーレイ: ユーザー名 + 再生時間 + アクション */}
         <div className="video-card__overlay">
@@ -56,7 +64,9 @@ export default function VideoCard({ video }: VideoCardProps) {
             <span className="video-card__overlay-username">{video.uploader.display_name}</span>
           </div>
           <div className="video-card__overlay-bottom">
-            <span className="video-card__duration">{formatDuration(video.duration_seconds)}</span>
+            {durationLabel && (
+              <span className="video-card__duration">{durationLabel}</span>
+            )}
           </div>
         </div>
 

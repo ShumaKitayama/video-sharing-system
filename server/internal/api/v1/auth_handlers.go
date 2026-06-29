@@ -17,6 +17,53 @@ import (
 	"video-sharing-system/server/internal/validation"
 )
 
+func handleAuthRegister(c *gin.Context, cfg config.Config, deps api.Deps) {
+	var req struct {
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", []apperror.FieldDetail{
+			{Field: "body", Message: "JSON形式で送信してください"},
+		})
+		return
+	}
+
+	var details []apperror.FieldDetail
+	if d := validation.Username(strings.TrimSpace(req.Username)); d != nil {
+		details = append(details, *d)
+	}
+	if d := validation.DisplayName(req.DisplayName); d != nil {
+		details = append(details, *d)
+	}
+	if d := validation.Password(req.Password); d != nil {
+		details = append(details, *d)
+	}
+	if len(details) > 0 {
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", details)
+		return
+	}
+
+	token, user, err := deps.Auth.Register(
+		c.Request.Context(),
+		strings.TrimSpace(req.Username),
+		strings.TrimSpace(req.DisplayName),
+		req.Password,
+	)
+	if err != nil {
+		if errors.Is(err, service.ErrConflict) {
+			handlerutil.Error(c, http.StatusConflict, apperror.Conflict, "このユーザー名はすでに使われています", nil)
+			return
+		}
+		handlerutil.Error(c, http.StatusInternalServerError, apperror.InternalError, "サーバーで問題が発生しました", nil)
+		return
+	}
+
+	setSessionCookie(c, cfg, token)
+	handlerutil.Data(c, http.StatusCreated, gin.H{"user": user})
+}
+
 func handleAuthLogin(c *gin.Context, cfg config.Config, deps api.Deps) {
 	var req struct {
 		Username string `json:"username"`

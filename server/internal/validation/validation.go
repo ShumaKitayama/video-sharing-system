@@ -3,6 +3,7 @@ package validation
 import (
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -39,6 +40,25 @@ func Password(password string) *apperror.FieldDetail {
 		return &f
 	}
 	return nil
+}
+
+// ParseDurationSeconds parses optional upload metadata from multipart form.
+func ParseDurationSeconds(raw string) (*int32, *apperror.FieldDetail) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || n < 0 {
+		f := Field("duration_seconds", "0以上の整数で指定してください")
+		return nil, &f
+	}
+	if n > 86400 {
+		f := Field("duration_seconds", "86400秒以下で指定してください")
+		return nil, &f
+	}
+	v := int32(n)
+	return &v, nil
 }
 
 func Title(title string) *apperror.FieldDetail {

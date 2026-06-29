@@ -8,12 +8,14 @@
 import { useState, useEffect, useCallback } from "react";
 import type { User } from "../types";
 import { API_BASE_URL, endpoints } from "../api/endpoints";
+import { authService, ApiError, type RegisterInput } from "../services/api";
 
 interface UseAuthResult {
   user: User | null;
   isLoggedIn: boolean;
   loading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
+  register: (input: RegisterInput) => Promise<{ success: true } | { success: false; message: string; fieldErrors?: Record<string, string> }>;
   logout: () => Promise<void>;
 }
 
@@ -65,6 +67,42 @@ export function useAuth(): UseAuthResult {
     [],
   );
 
+  /** 新規アカウント登録する（成功時は自動ログイン） */
+  const register = useCallback(
+    async (
+      input: RegisterInput,
+    ): Promise<
+      | { success: true }
+      | { success: false; message: string; fieldErrors?: Record<string, string> }
+    > => {
+      try {
+        const registeredUser = await authService.register(input);
+        setUser(registeredUser as User);
+        return { success: true };
+      } catch (e) {
+        if (e instanceof ApiError) {
+          const fieldErrors: Record<string, string> = {};
+          if (e.details) {
+            for (const d of e.details) {
+              if (d.field && d.message) fieldErrors[d.field] = d.message;
+            }
+          }
+
+          const message =
+            e.status === 409
+              ? "このユーザー名はすでに使われています"
+              : e.status === 400
+                ? "入力内容を確認してください"
+                : "登録に失敗しました";
+
+          return { success: false, message, fieldErrors };
+        }
+        return { success: false, message: "サーバーに接続できませんでした" };
+      }
+    },
+    [],
+  );
+
   /** ログアウトする */
   const logout = useCallback(async (): Promise<void> => {
     try {
@@ -84,6 +122,7 @@ export function useAuth(): UseAuthResult {
     isLoggedIn: user !== null,
     loading,
     login,
+    register,
     logout,
   };
 }

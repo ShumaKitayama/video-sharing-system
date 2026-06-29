@@ -14,7 +14,7 @@ import (
 	"video-sharing-system/server/internal/validation"
 )
 
-func (s *VideoService) UploadVideo(ctx context.Context, uploaderID int64, title, description, declaredMIME, originalFilename string, src io.Reader) (VideoDTO, error) {
+func (s *VideoService) UploadVideo(ctx context.Context, uploaderID int64, title, description, declaredMIME, originalFilename string, duration *int32, src io.Reader) (VideoDTO, error) {
 	mime := strings.TrimSpace(strings.ToLower(declaredMIME))
 	if !validation.IsAllowedVideoMIME(mime) {
 		return VideoDTO{}, ErrUnsupportedMedia
@@ -45,7 +45,7 @@ func (s *VideoService) UploadVideo(ctx context.Context, uploaderID int64, title,
 		return VideoDTO{}, err
 	}
 
-	row, err := s.repo.Create(ctx, uploaderID, strings.TrimSpace(title), description, key, name, mime, size, nil)
+	row, err := s.repo.Create(ctx, uploaderID, strings.TrimSpace(title), description, key, name, mime, size, duration)
 	if err != nil {
 		_ = s.store.Delete(key)
 		return VideoDTO{}, err

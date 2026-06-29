@@ -9,6 +9,8 @@ import HomePage from "./pages/HomePage";
 import WatchPage from "./pages/WatchPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import ChannelPage from "./pages/ChannelPage";
+import RegisterPage from "./pages/RegisterPage";
+import LoginPage from "./pages/LoginPage";
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/watch/:id" element={<WatchPage />} />
           <Route path="/search" element={<SearchResultsPage />} />
           <Route path="/channel/:id" element={<ChannelPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/login" element={<LoginPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

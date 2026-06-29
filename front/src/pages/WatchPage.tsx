@@ -37,9 +37,9 @@ export default function WatchPage() {
   return (
     <div className="watch-immersive fade-in" id="watch-page">
       {/* メインプレーヤーエリア */}
-      <div className="watch-immersive__player" style={{ background: "#000", position: "relative" }}>
+      <div className="watch-immersive__player">
         {/* 動画プレーヤー */}
-        <VideoPlayer videoId={video.id} />
+        <VideoPlayer videoId={video.id} variant="immersive" />
 
         {/* 左上：戻るボタン */}
         <button className="watch-immersive__back" onClick={() => navigate(-1)} id="back-btn">

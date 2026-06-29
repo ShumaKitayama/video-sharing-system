@@ -89,9 +89,18 @@ export default function Header({ onOpenUpload, onOpenLogin, user, onLogout }: He
             )}
           </div>
         ) : (
-          <button className="header__login-btn" onClick={onOpenLogin} id="login-btn">
-            ログイン
-          </button>
+          <>
+            <button
+              className="header__register-btn"
+              onClick={() => navigate("/register")}
+              id="register-btn"
+            >
+              新規登録
+            </button>
+            <button className="header__login-btn" onClick={onOpenLogin} id="login-btn">
+              ログイン
+            </button>
+          </>
         )}
       </div>
     </header>

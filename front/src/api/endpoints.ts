@@ -15,6 +15,7 @@ const V1 = "/api/v1";
 export const endpoints = {
   // 認証
   auth: {
+    register: `${V1}/auth/register`,
     login: `${V1}/auth/login`,
     logout: `${V1}/auth/logout`,
     me: `${V1}/auth/me`,

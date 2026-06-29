@@ -8,6 +8,34 @@
 import { useState, useCallback } from "react";
 import { API_BASE_URL, endpoints } from "../api/endpoints";
 
+/** ローカルファイルから再生時間（秒）を読み取る */
+function readVideoDurationSeconds(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      const seconds = Math.floor(video.duration);
+      cleanup();
+      resolve(Number.isFinite(seconds) && seconds >= 0 ? seconds : null);
+    };
+
+    video.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    video.src = url;
+  });
+}
+
 interface UploadedVideo {
   id: string;
   title: string;
@@ -60,6 +88,8 @@ export function useVideoUpload(): UseVideoUploadResult {
       setError(null);
       setProgress(0);
 
+      const durationSeconds = await readVideoDurationSeconds(file);
+
       // XMLHttpRequest でアップロード進捗を取得する
       // fetch ではアップロード進捗が取れないため XHR を使用
       return new Promise<UploadedVideo | null>((resolve) => {
@@ -67,6 +97,9 @@ export function useVideoUpload(): UseVideoUploadResult {
         form.append("file", file);
         form.append("title", title.trim());
         form.append("description", description);
+        if (durationSeconds != null) {
+          form.append("duration_seconds", String(durationSeconds));
+        }
 
         const xhr = new XMLHttpRequest();
 

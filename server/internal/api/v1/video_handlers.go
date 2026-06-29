@@ -109,12 +109,16 @@ func handleVideosCreate(c *gin.Context, deps api.Deps) {
 	if !validation.IsAllowedVideoMIME(mime) || !validation.FilenameMatchesMIME(filename, mime) {
 		details = append(details, apperror.FieldDetail{Field: "file", Message: "MP4またはWebMを指定してください"})
 	}
+	duration, durDetail := validation.ParseDurationSeconds(c.PostForm("duration_seconds"))
+	if durDetail != nil {
+		details = append(details, *durDetail)
+	}
 	if len(details) > 0 {
 		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", details)
 		return
 	}
 
-	video, err := deps.Videos.UploadVideo(c.Request.Context(), uid, title, desc, mime, filename, rc)
+	video, err := deps.Videos.UploadVideo(c.Request.Context(), uid, title, desc, mime, filename, duration, rc)
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		handlerutil.Error(c, http.StatusRequestTimeout, apperror.InternalError, "アップロードが中断されました", nil)

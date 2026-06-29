@@ -73,6 +73,37 @@ export async function apiFetch<T>(
 }
 
 // -------------------------------------------------------
+// 認証サービス
+// -------------------------------------------------------
+
+export interface RegisterInput {
+  username: string;
+  display_name: string;
+  password: string;
+}
+
+export interface AuthUserPayload {
+  id: string;
+  username: string;
+  display_name: string;
+  role: "student" | "teacher";
+}
+
+export const authService = {
+  /** 新規アカウント登録（生徒ロール固定） */
+  async register(input: RegisterInput): Promise<AuthUserPayload> {
+    const res = await apiFetch<{ user: AuthUserPayload }>(
+      endpoints.auth.register,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+    return res.user;
+  },
+};
+
+// -------------------------------------------------------
 // 動画サービス
 // -------------------------------------------------------
 

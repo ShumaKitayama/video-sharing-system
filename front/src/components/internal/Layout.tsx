@@ -14,24 +14,24 @@ import { useAuth } from "../../hooks/useAuth";
 export default function Layout() {
   const [showUpload, setShowUpload] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const { user, login, logout } = useAuth();
+  const auth = useAuth();
 
   return (
     <>
       <Header
         onOpenUpload={() => setShowUpload(true)}
         onOpenLogin={() => setShowLogin(true)}
-        user={user}
-        onLogout={logout}
+        user={auth.user}
+        onLogout={auth.logout}
       />
       <div className="layout">
         <main className="layout__main">
-          <Outlet />
+          <Outlet context={auth} />
         </main>
       </div>
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
       {showLogin && (
-        <LoginModal onClose={() => setShowLogin(false)} onLogin={login} />
+        <LoginModal onClose={() => setShowLogin(false)} onLogin={auth.login} />
       )}
     </>
   );

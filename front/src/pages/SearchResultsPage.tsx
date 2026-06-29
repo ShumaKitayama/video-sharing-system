@@ -4,9 +4,49 @@
  * =================================================== */
 
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useVideos } from "../hooks/useVideos";
 import ChannelAvatar from "../components/student/ChannelAvatar";
+import VideoPreview from "../components/internal/VideoPreview";
 import { formatDuration, formatViewCount, formatTimeAgo } from "../components/student/VideoCard";
+import type { Video } from "../types";
+
+interface SearchResultItemProps {
+  video: Video;
+  onNavigate: () => void;
+}
+
+function SearchResultItem({ video, onNavigate }: SearchResultItemProps) {
+  const [detectedDuration, setDetectedDuration] = useState<number | null>(null);
+  const durationLabel = formatDuration(video.duration_seconds ?? detectedDuration);
+
+  return (
+    <div className="search-result" onClick={onNavigate} id={`search-result-${video.id}`}>
+      <div className="search-result__thumb">
+        <VideoPreview
+          videoId={video.id}
+          onDurationLoaded={(seconds) =>
+            setDetectedDuration((prev) => prev ?? seconds)
+          }
+        />
+        {durationLabel && (
+          <span className="search-result__duration">{durationLabel}</span>
+        )}
+      </div>
+      <div className="search-result__info">
+        <h3 className="search-result__title">{video.title}</h3>
+        <div className="search-result__meta">
+          {formatViewCount(video.view_count)} 回視聴 • {formatTimeAgo(video.created_at)}
+        </div>
+        <div className="search-result__channel">
+          <ChannelAvatar displayName={video.uploader.display_name} size={24} />
+          {video.uploader.display_name}
+        </div>
+        <div className="search-result__desc">{video.description}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function SearchResultsPage() {
   const [searchParams] = useSearchParams();
@@ -29,23 +69,7 @@ export default function SearchResultsPage() {
         </div>
       ) : (
         videos.map((v) => (
-          <div key={v.id} className="search-result" onClick={() => navigate(`/watch/${v.id}`)} id={`search-result-${v.id}`}>
-            <div className="search-result__thumb" style={{ background: v.thumbnail_url || "var(--bg-elevated)" }}>
-              🎬
-              <span className="search-result__duration">{formatDuration(v.duration_seconds)}</span>
-            </div>
-            <div className="search-result__info">
-              <h3 className="search-result__title">{v.title}</h3>
-              <div className="search-result__meta">
-                {formatViewCount(v.view_count)} 回視聴 • {formatTimeAgo(v.created_at)}
-              </div>
-              <div className="search-result__channel">
-                <ChannelAvatar displayName={v.uploader.display_name} size={24} />
-                {v.uploader.display_name}
-              </div>
-              <div className="search-result__desc">{v.description}</div>
-            </div>
-          </div>
+          <SearchResultItem key={v.id} video={v} onNavigate={() => navigate(`/watch/${v.id}`)} />
         ))
       )}
     </div>
