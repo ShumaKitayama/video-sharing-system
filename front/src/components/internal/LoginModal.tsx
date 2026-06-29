@@ -5,6 +5,7 @@
  * =================================================== */
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 interface LoginModalProps {
   onClose: () => void;
@@ -82,6 +83,12 @@ export default function LoginModal({ onClose, onLogin }: LoginModalProps) {
             >
               {submitting ? "ログイン中..." : "ログイン"}
             </button>
+            <p className="auth-page__footer auth-page__footer--modal">
+              アカウントをお持ちでないですか？{" "}
+              <Link className="auth-page__link" to="/register" onClick={onClose}>
+                新規登録
+              </Link>
+            </p>
           </form>
         </div>
       </div>

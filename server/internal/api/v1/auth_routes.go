@@ -9,6 +9,9 @@ import (
 )
 
 func registerAuthRoutes(g *gin.RouterGroup, cfg config.Config, deps api.Deps) {
+	g.POST("/auth/register", middleware.LoginRateLimit(deps.LoginRL), func(c *gin.Context) {
+		handleAuthRegister(c, cfg, deps)
+	})
 	g.POST("/auth/login", middleware.LoginRateLimit(deps.LoginRL), func(c *gin.Context) {
 		handleAuthLogin(c, cfg, deps)
 	})

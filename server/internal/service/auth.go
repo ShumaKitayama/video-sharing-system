@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"video-sharing-system/server/internal/pgutil"
 	"video-sharing-system/server/internal/repository"
 )
 
@@ -54,6 +55,38 @@ func randomSessionToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+func (s *AuthService) Register(ctx context.Context, username, displayName, password string) (cookieToken string, user AuthUser, err error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	if err != nil {
+		return "", AuthUser{}, err
+	}
+
+	u, err := s.users.Create(ctx, username, displayName, string(hash), "student")
+	if err != nil {
+		if pgutil.IsUniqueViolation(err) {
+			return "", AuthUser{}, fmt.Errorf("%w", ErrConflict)
+		}
+		return "", AuthUser{}, err
+	}
+
+	token, err := randomSessionToken()
+	if err != nil {
+		return "", AuthUser{}, err
+	}
+	expires := time.Now().UTC().Add(sessionDuration)
+	if _, err := s.sessions.Create(ctx, u.ID, hashSessionToken(token), expires); err != nil {
+		return "", AuthUser{}, err
+	}
+
+	user = AuthUser{
+		ID:          u.PublicID,
+		Username:    u.Username,
+		DisplayName: u.DisplayName,
+		Role:        u.Role,
+	}
+	return token, user, nil
 }
 
 func (s *AuthService) Login(ctx context.Context, username, password string) (cookieToken string, user AuthUser, err error) {

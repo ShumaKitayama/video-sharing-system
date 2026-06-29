@@ -9,6 +9,70 @@ import (
 	"video-sharing-system/server/internal/middleware"
 )
 
+// TestRegisterSuccessCreatesStudent verifies registration creates a student account
+// and issues a session cookie.
+func TestRegisterSuccessCreatesStudent(t *testing.T) {
+	setupTest(t)
+
+	client := newClient(t)
+	resp, body := doJSON(t, client, http.MethodPost, "/auth/register", map[string]string{
+		"username":     "newstudent",
+		"display_name": "新規 太郎",
+		"password":     "classroom-pass",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("register: expected 201, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	var data struct {
+		User struct {
+			Username    string `json:"username"`
+			DisplayName string `json:"display_name"`
+			Role        string `json:"role"`
+		} `json:"user"`
+	}
+	decodeData(t, body, &data)
+	if data.User.Username != "newstudent" || data.User.Role != "student" {
+		t.Fatalf("register: unexpected user payload: %+v", data.User)
+	}
+
+	var found bool
+	for _, ck := range resp.Cookies() {
+		if ck.Name == middleware.SessionCookieName {
+			found = true
+			if !ck.HttpOnly {
+				t.Fatalf("session cookie should be HttpOnly")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("register: %q cookie not set", middleware.SessionCookieName)
+	}
+
+	respMe, bodyMe := doJSON(t, client, http.MethodGet, "/auth/me", nil)
+	if respMe.StatusCode != http.StatusOK {
+		t.Fatalf("/auth/me after register: expected 200, got %d: %s", respMe.StatusCode, string(bodyMe))
+	}
+}
+
+// TestRegisterDuplicateUsername verifies duplicate usernames return 409.
+func TestRegisterDuplicateUsername(t *testing.T) {
+	setupTest(t)
+	seedUser(t, "student01", "山田 太郎", "classroom-pass", "student")
+
+	resp, body := doJSON(t, newClient(t), http.MethodPost, "/auth/register", map[string]string{
+		"username":     "student01",
+		"display_name": "別の名前",
+		"password":     "classroom-pass",
+	})
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("register: expected 409, got %d: %s", resp.StatusCode, string(body))
+	}
+	if code := errorCode(t, body); code != "CONFLICT" {
+		t.Fatalf("register: expected CONFLICT, got %q", code)
+	}
+}
+
 // TestLoginSuccessSetsCookie verifies a valid login returns the user payload
 // and issues an HttpOnly session cookie.
 func TestLoginSuccessSetsCookie(t *testing.T) {
