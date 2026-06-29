@@ -10,6 +10,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useComments } from "../hooks/useComments";
 import { useLike } from "../hooks/useLike";
+import VideoPlayer from "../components/internal/VideoPlayer";
 import ChannelAvatar from "../components/student/ChannelAvatar";
 import CommentItem from "../components/student/CommentItem";
 import { formatViewCount, formatTimeAgo } from "../components/student/VideoCard";
@@ -18,23 +19,27 @@ export default function WatchPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { video, loading, error } = useVideoDetail(id);
-  const { comments, loading: commentsLoading } = useComments(id);
+  const { comments, loading: commentsLoading, posting, postComment } = useComments(id);
   const { liked, likeCount, toggleLike } = useLike(id, video?.like_count ?? 0);
   const [showComments, setShowComments] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [commentText, setCommentText] = useState("");
 
   if (loading) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-secondary)" }}>読み込み中...</div>;
   if (error || !video) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-secondary)" }}>動画が見つかりません</div>;
 
+  const handlePostComment = async () => {
+    if (!commentText.trim()) return;
+    const ok = await postComment(commentText);
+    if (ok) setCommentText("");
+  };
+
   return (
     <div className="watch-immersive fade-in" id="watch-page">
       {/* メインプレーヤーエリア */}
-      <div className="watch-immersive__player" style={{ background: video.thumbnail_url || "linear-gradient(135deg, #1a1a2e, #16213e)" }}>
-        {/* 再生ボタン（中央） */}
-        <div className="watch-immersive__play">
-          <div className="watch-immersive__play-btn">▶</div>
-          <span className="watch-immersive__play-text">バックエンド接続時に再生</span>
-        </div>
+      <div className="watch-immersive__player" style={{ background: "#000", position: "relative" }}>
+        {/* 動画プレーヤー */}
+        <VideoPlayer videoId={video.id} />
 
         {/* 左上：戻るボタン */}
         <button className="watch-immersive__back" onClick={() => navigate(-1)} id="back-btn">
@@ -102,7 +107,29 @@ export default function WatchPage() {
                   type="text"
                   placeholder="コメントを追加..."
                   id="comment-input"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handlePostComment()}
+                  disabled={posting}
                 />
+                <button
+                  onClick={handlePostComment}
+                  disabled={posting || !commentText.trim()}
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 16px",
+                    background: "var(--accent)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    width: "100%",
+                  }}
+                  id="comment-submit"
+                >
+                  {posting ? "送信中..." : "コメントを送信"}
+                </button>
               </div>
               {commentsLoading ? (
                 <div style={{ padding: 24, textAlign: "center", color: "var(--text-secondary)" }}>読み込み中...</div>
