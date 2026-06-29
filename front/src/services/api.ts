@@ -1,118 +1,214 @@
 /* ===================================================
  * services/api.ts
  * [保護] API通信サービス層
- * 現在はモックデータを返す。将来のバックエンド接続時は
- * このファイルの中身だけを差し替えればフック層以上は無変更で動く。
+ * バックエンドの実エンドポイントを呼び出す。
+ * フック層（hooks/）はこのサービスだけを使い、
+ * fetch を直接書かない。
  * =================================================== */
 
 import type { Video, Comment, VideoQueryParams, PaginatedResponse } from "../types";
-import { mockVideos, mockComments } from "../mock/data";
+import { API_BASE_URL, endpoints } from "../api/endpoints";
 
-/** 擬似的な通信遅延を再現する */
-function delay(ms: number = 200): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// -------------------------------------------------------
+// 共通エラークラス
+// -------------------------------------------------------
+
+/** APIエラー情報を保持するクラス */
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  details?: { field: string; message: string }[];
+
+  constructor(
+    status: number,
+    code: string,
+    details?: { field: string; message: string }[],
+  ) {
+    super(code);
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
 }
 
-/* ---------- 動画サービス ---------- */
+// -------------------------------------------------------
+// 共通 fetch ラッパー
+// -------------------------------------------------------
+
+/**
+ * 全APIリクエストを通る共通関数。
+ * - credentials: "include" でCookieを自動送信
+ * - 204 No Content は undefined を返す
+ * - エラー時は ApiError をスローする
+ */
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
+  });
+
+  // 204 No Content
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const body = await res.json();
+
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      body.error?.code ?? "INTERNAL_ERROR",
+      body.error?.details,
+    );
+  }
+
+  return body.data as T;
+}
+
+// -------------------------------------------------------
+// 動画サービス
+// -------------------------------------------------------
 
 export const videoService = {
-  /** 動画一覧を取得する */
+  /** 動画一覧を取得する（ページング・検索・ソート対応） */
   async getVideos(params?: VideoQueryParams): Promise<PaginatedResponse<Video>> {
-    await delay();
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.per_page) query.set("per_page", String(params.per_page));
+    if (params?.q) query.set("q", params.q);
+    if (params?.sort) query.set("sort", params.sort);
+    if (params?.uploader_id) query.set("uploader_id", params.uploader_id);
 
-    let filtered = [...mockVideos];
+    const qs = query.toString();
+    const url = `${endpoints.videos.list}${qs ? `?${qs}` : ""}`;
 
-    // 検索
-    if (params?.q) {
-      const q = params.q.toLowerCase();
-      filtered = filtered.filter(
-        (v) =>
-          v.title.toLowerCase().includes(q) ||
-          v.description.toLowerCase().includes(q) ||
-          v.uploader.display_name.toLowerCase().includes(q)
+    const res = await fetch(`${API_BASE_URL}${url}`, {
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(
+        res.status,
+        body.error?.code ?? "INTERNAL_ERROR",
+        body.error?.details,
       );
     }
 
-    // 投稿者絞り込み
-    if (params?.uploader_id) {
-      filtered = filtered.filter((v) => v.uploader.id === params.uploader_id);
-    }
-
-    // ソート
-    switch (params?.sort) {
-      case "oldest":
-        filtered.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        break;
-      case "most_viewed":
-        filtered.sort((a, b) => b.view_count - a.view_count);
-        break;
-      case "most_liked":
-        filtered.sort((a, b) => b.like_count - a.like_count);
-        break;
-      default: // latest
-        filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }
-
-    const page = params?.page ?? 1;
-    const perPage = params?.per_page ?? 20;
-    const start = (page - 1) * perPage;
-    const paged = filtered.slice(start, start + perPage);
-
+    const body = await res.json();
+    // バックエンドは { data: [...], meta: {...} } 形式で返す
     return {
-      data: paged,
-      meta: {
-        page,
-        per_page: perPage,
-        total: filtered.length,
-        total_pages: Math.ceil(filtered.length / perPage),
-      },
+      data: body.data as Video[],
+      meta: body.meta,
     };
   },
 
   /** 動画詳細を取得する */
   async getVideoById(id: string): Promise<Video | null> {
-    await delay();
-    return mockVideos.find((v) => v.id === id) ?? null;
+    try {
+      return await apiFetch<Video>(endpoints.videos.detail(id));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
+
+  /** 自分の動画一覧を取得する（ログイン必須） */
+  async getMyVideos(): Promise<PaginatedResponse<Video>> {
+    const res = await fetch(`${API_BASE_URL}${endpoints.videos.myVideos}`, {
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, body.error?.code ?? "INTERNAL_ERROR");
+    }
+
+    const body = await res.json();
+    return { data: body.data as Video[], meta: body.meta };
+  },
+
+  /** 動画を削除する（ログイン必須、投稿者本人または先生） */
+  async deleteVideo(id: string): Promise<void> {
+    await apiFetch<void>(endpoints.videos.delete(id), { method: "DELETE" });
   },
 };
 
-/* ---------- コメントサービス ---------- */
+// -------------------------------------------------------
+// コメントサービス
+// -------------------------------------------------------
 
 export const commentService = {
   /** コメント一覧を取得する */
   async getComments(videoId: string): Promise<Comment[]> {
-    await delay();
-    return mockComments[videoId] ?? [];
+    const res = await fetch(
+      `${API_BASE_URL}${endpoints.comments.list(videoId)}`,
+      { credentials: "include" },
+    );
+    if (!res.ok) return [];
+    const body = await res.json();
+    // バックエンドは { data: [...] } 形式
+    return (body.data ?? []) as Comment[];
+  },
+
+  /** コメントを投稿する（ログイン必須） */
+  async postComment(videoId: string, body: string): Promise<Comment> {
+    return apiFetch<Comment>(endpoints.comments.create(videoId), {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    });
+  },
+
+  /** コメントを削除する（ログイン必須） */
+  async deleteComment(commentId: string): Promise<void> {
+    await apiFetch<void>(endpoints.comments.delete(commentId), {
+      method: "DELETE",
+    });
   },
 };
 
-/* ---------- いいねサービス ---------- */
-
-// メモリ上のいいね状態（モック用）
-const likedSet = new Set<string>();
+// -------------------------------------------------------
+// いいねサービス
+// -------------------------------------------------------
 
 export const likeService = {
-  /** いいね状態を取得する */
+  /** 自分がいいね済みかどうかを取得する（ログイン必須） */
   async getLikeStatus(videoId: string): Promise<boolean> {
-    await delay(100);
-    return likedSet.has(videoId);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}${endpoints.likes.status(videoId)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return false;
+      const body = await res.json();
+      return (body.data?.liked ?? false) as boolean;
+    } catch {
+      return false;
+    }
   },
 
-  /** いいねを切り替える */
-  async toggleLike(videoId: string): Promise<{ liked: boolean; like_count: number }> {
-    await delay(100);
-    const video = mockVideos.find((v) => v.id === videoId);
-    if (!video) throw new Error("Video not found");
+  /** いいねを追加する（冪等）。{ liked, like_count } を返す */
+  async addLike(videoId: string): Promise<{ liked: boolean; like_count: number }> {
+    return apiFetch<{ liked: boolean; like_count: number }>(
+      endpoints.likes.add(videoId),
+      { method: "PUT" },
+    );
+  },
 
-    const wasLiked = likedSet.has(videoId);
-    if (wasLiked) {
-      likedSet.delete(videoId);
-      video.like_count = Math.max(0, video.like_count - 1);
-    } else {
-      likedSet.add(videoId);
-      video.like_count += 1;
-    }
-
-    return { liked: !wasLiked, like_count: video.like_count };
+  /** いいねを解除する（冪等）。{ liked, like_count } を返す */
+  async removeLike(videoId: string): Promise<{ liked: boolean; like_count: number }> {
+    return apiFetch<{ liked: boolean; like_count: number }>(
+      endpoints.likes.remove(videoId),
+      { method: "DELETE" },
+    );
   },
 };

@@ -1,6 +1,7 @@
 /* ===================================================
  * components/internal/Layout.tsx
  * [保護] ページレイアウト骨格（サイドバーなし）
+ * useAuth の非同期 login / logout に対応。
  * =================================================== */
 
 import { useState } from "react";
@@ -29,7 +30,9 @@ export default function Layout() {
         </main>
       </div>
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} onLogin={login} />}
+      {showLogin && (
+        <LoginModal onClose={() => setShowLogin(false)} onLogin={login} />
+      )}
     </>
   );
 }

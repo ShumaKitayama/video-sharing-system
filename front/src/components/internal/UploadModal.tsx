@@ -32,8 +32,8 @@ export default function UploadModal({ onClose }: UploadModalProps) {
 
   const handleSubmit = async () => {
     if (!file) return;
-    const ok = await uploadVideo(file, title, description);
-    if (ok) setSuccess(true);
+    const result = await uploadVideo(file, title, description);
+    if (result !== null) setSuccess(true);
   };
 
   const handleClose = () => {

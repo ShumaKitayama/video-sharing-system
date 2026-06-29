@@ -1,27 +1,36 @@
 /* ===================================================
  * components/internal/LoginModal.tsx
  * [保護] ログインモーダル
+ * useAuth の login(username, password) を呼び出す。
  * =================================================== */
 
 import { useState } from "react";
 
 interface LoginModalProps {
   onClose: () => void;
-  onLogin: (username: string) => boolean;
+  onLogin: (username: string, password: string) => Promise<boolean>;
 }
 
 export default function LoginModal({ onClose, onLogin }: LoginModalProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) {
       setError("ユーザー名を入力してください");
       return;
     }
-    const success = onLogin(username.trim());
+    if (!password) {
+      setError("パスワードを入力してください");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    const success = await onLogin(username.trim(), password);
+    setSubmitting(false);
     if (success) {
       onClose();
     } else {
@@ -45,9 +54,11 @@ export default function LoginModal({ onClose, onLogin }: LoginModalProps) {
                 className="upload-form__input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="例: yamada_taro"
+                placeholder="例: student01"
                 id="login-username"
                 autoFocus
+                autoComplete="username"
+                disabled={submitting}
               />
             </div>
             <div>
@@ -59,12 +70,18 @@ export default function LoginModal({ onClose, onLogin }: LoginModalProps) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="パスワード"
                 id="login-password"
+                autoComplete="current-password"
+                disabled={submitting}
               />
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", background: "var(--bg-hover)", padding: "10px 12px", borderRadius: 8 }}>
-              💡 デモ用ユーザー名: <strong>yamada_taro</strong>, <strong>suzuki_hana</strong>, <strong>teacher</strong> など（パスワードは任意）
-            </div>
-            <button className="login-form__submit" type="submit" id="login-submit">ログイン</button>
+            <button
+              className="login-form__submit"
+              type="submit"
+              id="login-submit"
+              disabled={submitting}
+            >
+              {submitting ? "ログイン中..." : "ログイン"}
+            </button>
           </form>
         </div>
       </div>
