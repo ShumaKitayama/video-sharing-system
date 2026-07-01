@@ -2,5 +2,6 @@ server/uploads/
 *.env
 .DS_Store
 node_modules/
+server/node_modules/
 
 .vscode

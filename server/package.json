@@ -1,0 +1,11 @@
+{
+  "name": "video-sharing-api",
+  "private": true,
+  "scripts": {
+    "vercel:deploy": "vercel deploy",
+    "vercel:deploy:prod": "vercel deploy --prod"
+  },
+  "devDependencies": {
+    "vercel": "^54.18.6"
+  }
+}
