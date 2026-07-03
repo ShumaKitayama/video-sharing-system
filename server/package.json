@@ -2,10 +2,7 @@
   "name": "video-sharing-api",
   "private": true,
   "scripts": {
-    "vercel:deploy": "vercel deploy",
-    "vercel:deploy:prod": "vercel deploy --prod"
-  },
-  "devDependencies": {
-    "vercel": "^54.18.6"
+    "vercel:deploy": "npx --yes vercel@54.18.6 deploy",
+    "vercel:deploy:prod": "npx --yes vercel@54.18.6 deploy --prod"
   }
 }

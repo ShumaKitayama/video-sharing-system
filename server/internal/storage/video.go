@@ -19,15 +19,32 @@ const copyBufferSize = 32 * 1024
 const maxVideoBytes = 500 * 1024 * 1024
 
 type VideoStorage struct {
-	root string
+	root      string
+	blobToken string
 }
 
-func NewVideoStorage(root string) *VideoStorage {
-	return &VideoStorage{root: root}
+func NewVideoStorage(root string, blobToken string) *VideoStorage {
+	return &VideoStorage{root: root, blobToken: blobToken}
 }
 
 func (s *VideoStorage) Root() string {
 	return s.root
+}
+
+// BlobEnabled reports whether persistent Vercel Blob storage is configured.
+func (s *VideoStorage) BlobEnabled() bool {
+	return s.blobToken != ""
+}
+
+// IssueBlobClientToken returns a short-lived token allowing the browser to
+// upload a single video object directly to Vercel Blob.
+func (s *VideoStorage) IssueBlobClientToken(pathname string, allowedContentTypes []string, maxBytes int64, validFor time.Duration) (string, error) {
+	return GenerateBlobClientToken(s.blobToken, pathname, allowedContentTypes, maxBytes, validFor)
+}
+
+// StatBlob reads size and content type of an uploaded blob via HEAD.
+func (s *VideoStorage) StatBlob(ctx context.Context, blobURL string) (int64, string, error) {
+	return statBlob(ctx, blobURL)
 }
 
 // AbsolutePath resolves a relative storage key under root.
@@ -38,6 +55,10 @@ func (s *VideoStorage) AbsolutePath(storageKey string) string {
 
 // PrepareWritableDir ensures root exists and is writable.
 func (s *VideoStorage) PrepareWritableDir(ctx context.Context) error {
+	if s.blobToken != "" {
+		return nil
+	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -145,12 +166,29 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 	default:
 	}
 
+	key := filepath.ToSlash(filepath.Join(relDir, fileName))
+
+	if s.blobToken != "" {
+		blobFile, err := os.Open(tmpPath)
+		if err != nil {
+			_ = os.Remove(tmpPath)
+			return "", 0, err
+		}
+		// Vercel Blob REST API expects a flat pathname (e.g. uuid.mp4), not nested dirs.
+		blobURL, err := uploadToBlob(ctx, s.blobToken, fileName, mime, blobFile)
+		_ = blobFile.Close()
+		_ = os.Remove(tmpPath)
+		if err != nil {
+			return "", 0, err
+		}
+		return blobURL, written, nil
+	}
+
 	if err := os.Rename(tmpPath, fullPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", 0, err
 	}
 
-	key := filepath.ToSlash(filepath.Join(relDir, fileName))
 	return key, written, nil
 }
 
@@ -186,8 +224,15 @@ func sniffVideoMIME(header []byte) string {
 	return ""
 }
 
-// Delete removes an object by relative storage key.
+// Delete removes an object by relative storage key or blob URL.
 func (s *VideoStorage) Delete(storageKey string) error {
+	if strings.HasPrefix(storageKey, "https://") {
+		if s.blobToken == "" {
+			return nil
+		}
+		return deleteFromBlob(context.Background(), s.blobToken, storageKey)
+	}
+
 	path := s.AbsolutePath(storageKey)
 	rel, err := filepath.Rel(filepath.Clean(s.root), filepath.Clean(path))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {

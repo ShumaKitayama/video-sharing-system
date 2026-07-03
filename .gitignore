@@ -4,4 +4,6 @@ server/uploads/
 node_modules/
 server/node_modules/
 
-.vscode
+.vscode/*
+!.vscode/settings.json
+.env.local

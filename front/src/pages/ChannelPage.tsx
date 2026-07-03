@@ -5,12 +5,22 @@
 
 import { useParams } from "react-router-dom";
 import { useVideos } from "../hooks/useVideos";
+import { useAuth } from "../hooks/useAuth";
+import { useVideoDelete } from "../hooks/useVideoDelete";
 import VideoGrid from "../components/student/VideoGrid";
 import ChannelAvatar from "../components/student/ChannelAvatar";
 
 export default function ChannelPage() {
   const { id } = useParams<{ id: string }>();
-  const { videos, loading } = useVideos({ uploader_id: id });
+  const { videos, loading, refetch } = useVideos({ uploader_id: id });
+  const { user } = useAuth();
+  const { deleteVideo, deleting } = useVideoDelete();
+  const isOwnChannel = Boolean(user && id && user.id === id);
+
+  const handleDelete = async (videoId: string) => {
+    const ok = await deleteVideo(videoId);
+    if (ok) refetch();
+  };
 
   // 動画一覧の先頭からユーザー表示名を取得する
   const uploader = videos[0]?.uploader ?? null;
@@ -28,7 +38,13 @@ export default function ChannelPage() {
           </div>
         </div>
       </div>
-      <VideoGrid videos={videos} loading={loading} />
+      <VideoGrid
+        videos={videos}
+        loading={loading}
+        canDelete={isOwnChannel}
+        deleting={deleting}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }

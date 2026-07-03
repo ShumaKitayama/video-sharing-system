@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://video-sharing-api.vercel.app/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://video-sharing-api.vercel.app/health"
+    },
+    {
+      "source": "/ready",
+      "destination": "https://video-sharing-api.vercel.app/ready"
+    },
+    {
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

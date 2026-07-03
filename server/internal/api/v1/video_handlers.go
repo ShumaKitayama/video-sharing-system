@@ -88,6 +88,13 @@ func handleVideosCreate(c *gin.Context, deps api.Deps) {
 		return
 	}
 
+	// JSON body = the browser already uploaded the file directly to Vercel Blob
+	// and is now registering it (see handleBlobUpload). No file bytes here.
+	if strings.HasPrefix(strings.ToLower(c.ContentType()), "application/json") {
+		handleVideosCreateFromBlob(c, deps, uid)
+		return
+	}
+
 	title, desc, mime, filename, rc, err := parseVideoUpload(c)
 	if rc != nil {
 		defer rc.Close()
@@ -122,6 +129,63 @@ func handleVideosCreate(c *gin.Context, deps api.Deps) {
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		handlerutil.Error(c, http.StatusRequestTimeout, apperror.InternalError, "アップロードが中断されました", nil)
+		return
+	case errors.Is(err, service.ErrUnsupportedMedia):
+		handlerutil.Error(c, http.StatusUnsupportedMediaType, apperror.UnsupportedMediaType, "この動画形式には対応していません", nil)
+		return
+	case errors.Is(err, service.ErrPayloadTooLarge):
+		handlerutil.Error(c, http.StatusRequestEntityTooLarge, apperror.PayloadTooLarge, "ファイルサイズが大きすぎます", nil)
+		return
+	case err != nil:
+		handlerutil.Error(c, http.StatusInternalServerError, apperror.InternalError, "サーバーで問題が発生しました", nil)
+		return
+	}
+
+	handlerutil.Data(c, http.StatusCreated, gin.H{
+		"id":     video.ID,
+		"title":  video.Title,
+		"status": video.Status,
+	})
+}
+
+// handleVideosCreateFromBlob registers a video whose file already lives in
+// Vercel Blob (uploaded directly by the browser).
+func handleVideosCreateFromBlob(c *gin.Context, deps api.Deps, uid int64) {
+	var req struct {
+		BlobURL         string `json:"blob_url"`
+		Title           string `json:"title"`
+		Description     string `json:"description"`
+		ContentType     string `json:"content_type"`
+		DurationSeconds *int32 `json:"duration_seconds"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", []apperror.FieldDetail{
+			{Field: "body", Message: "JSON形式で送信してください"},
+		})
+		return
+	}
+
+	var details []apperror.FieldDetail
+	if d := validation.Title(req.Title); d != nil {
+		details = append(details, *d)
+	}
+	if d := validation.Description(req.Description); d != nil {
+		details = append(details, *d)
+	}
+	if strings.TrimSpace(req.BlobURL) == "" {
+		details = append(details, apperror.FieldDetail{Field: "blob_url", Message: "アップロード先URLがありません"})
+	}
+	if len(details) > 0 {
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", details)
+		return
+	}
+
+	video, err := deps.Videos.RegisterBlobVideo(c.Request.Context(), uid, req.Title, req.Description, req.BlobURL, req.ContentType, req.DurationSeconds)
+	switch {
+	case errors.Is(err, service.ErrInvalidBlobURL):
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "アップロードに失敗しました。もう一度お試しください", []apperror.FieldDetail{
+			{Field: "blob_url", Message: "アップロード先が確認できませんでした"},
+		})
 		return
 	case errors.Is(err, service.ErrUnsupportedMedia):
 		handlerutil.Error(c, http.StatusUnsupportedMediaType, apperror.UnsupportedMediaType, "この動画形式には対応していません", nil)

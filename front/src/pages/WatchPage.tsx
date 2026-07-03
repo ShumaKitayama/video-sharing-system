@@ -10,6 +10,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useVideoDetail } from "../hooks/useVideoDetail";
 import { useComments } from "../hooks/useComments";
 import { useLike } from "../hooks/useLike";
+import { useAuth } from "../hooks/useAuth";
+import { useVideoDelete } from "../hooks/useVideoDelete";
 import VideoPlayer from "../components/internal/VideoPlayer";
 import ChannelAvatar from "../components/student/ChannelAvatar";
 import CommentItem from "../components/student/CommentItem";
@@ -21,12 +23,24 @@ export default function WatchPage() {
   const { video, loading, error } = useVideoDetail(id);
   const { comments, loading: commentsLoading, posting, postComment } = useComments(id);
   const { liked, likeCount, toggleLike } = useLike(id, video?.like_count ?? 0);
+  const { user } = useAuth();
+  const { deleteVideo, deleting } = useVideoDelete();
   const [showComments, setShowComments] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [commentText, setCommentText] = useState("");
 
   if (loading) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-secondary)" }}>読み込み中...</div>;
   if (error || !video) return <div style={{ padding: 48, textAlign: "center", color: "var(--text-secondary)" }}>動画が見つかりません</div>;
+
+  const canDelete =
+    Boolean(user) &&
+    (user!.id === video.uploader.id || user!.role === "teacher");
+  const isOwnUploaderChannel = user?.id === video.uploader.id;
+
+  const handleDelete = async () => {
+    const ok = await deleteVideo(video.id);
+    if (ok) navigate(isOwnUploaderChannel ? `/channel/${video.uploader.id}` : "/");
+  };
 
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
@@ -68,6 +82,17 @@ export default function WatchPage() {
             <span className="watch-immersive__action-icon">👁</span>
             <span className="watch-immersive__action-label">{formatViewCount(video.view_count)}</span>
           </button>
+          {canDelete && (
+            <button
+              className="watch-immersive__action-btn watch-immersive__action-btn--danger"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              id="delete-video-btn"
+            >
+              <span className="watch-immersive__action-icon">🗑</span>
+              <span className="watch-immersive__action-label">{deleting ? "..." : "削除"}</span>
+            </button>
+          )}
         </div>
 
         {/* 下部オーバーレイ：ユーザー情報 + タイトル + 説明 */}

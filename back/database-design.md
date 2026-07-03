@@ -117,7 +117,7 @@ CREATE TYPE video_status AS ENUM ('published', 'hidden');
 | `title` | `VARCHAR(80)` | 不可 | タイトル |
 | `description` | `VARCHAR(1000)` | 不可 | 説明 |
 | `status` | `video_status` | 不可 | 公開状態 |
-| `storage_key` | `TEXT` | 不可 | 相対保存キー |
+| `storage_key` | `TEXT` | 不可 | 保存キー（ローカル=相対キー / Vercel Blob=公開 URL） |
 | `original_filename` | `VARCHAR(255)` | 不可 | 元ファイル名 |
 | `mime_type` | `VARCHAR(100)` | 不可 | MIME型 |
 | `file_size_bytes` | `BIGINT` | 不可 | サイズ |
@@ -357,15 +357,23 @@ server/uploads/videos/YYYY/MM/<uuid>.<ext>
 
 ### 10.2 DBに保存する値
 
+保存先により `storage_key` の中身が変わる（`storage` 層が `BLOB_READ_WRITE_TOKEN` の有無で判定）。
+
 ```txt
+# ローカル / Docker（ディスク保存・相対キー）
 videos.storage_key = videos/2026/05/1f1d3fb8-5b54-48b0-83c5-d5f5c52d82e9.mp4
+
+# Vercel 本番（Vercel Blob・公開 URL）
+videos.storage_key = https://<store>.public.blob.vercel-storage.com/<uuid>.mp4
 ```
+
+配信時は前者ならディスクから Range 配信、後者なら Blob へ 307 リダイレクトする。詳細は [`deployment-and-storage.md`](./deployment-and-storage.md)。
 
 ### 10.3 ルール
 
-- 絶対パスは保存しない
+- 絶対パス（ローカルファイルシステム）は保存しない
 - 元ファイル名は `original_filename` に分ける
-- 保存キーはサーバー側で生成する
+- 保存キー（相対キー / Blob URL）はサーバー側で生成・確定する
 - 途中失敗時はファイルを残さない
 
 ---

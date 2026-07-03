@@ -33,7 +33,7 @@ func main() {
 		log.Fatalf("migrations: %v", err)
 	}
 
-	store := storage.NewVideoStorage(cfg.UploadDir)
+	store := storage.NewVideoStorage(cfg.UploadDir, cfg.BlobReadWriteToken)
 
 	userRepo := repository.NewUserRepository(pool)
 	sessRepo := repository.NewSessionRepository(pool)

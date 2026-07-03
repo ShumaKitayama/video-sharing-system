@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"strconv"
 	"strings"
@@ -13,8 +15,10 @@ type Config struct {
 	UploadDir      string
 	MigrationsDir  string
 	CORSOrigins    []string
-	CookieSecure   bool
-	CookieSameSite string // lax / strict / none
+	CookieSecure       bool
+	CookieSameSite     string // lax / strict / none
+	BlobReadWriteToken string
+	UploadTokenSecret  string
 }
 
 // Load reads configuration from the environment with LAN-friendly defaults.
@@ -33,16 +37,27 @@ func Load() Config {
 	}
 
 	secure, _ := strconv.ParseBool(getenv("COOKIE_SECURE", "false"))
+	dbURL := getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/videoshare?sslmode=disable")
 
 	return Config{
 		Port:           port,
-		DatabaseURL:    getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/videoshare?sslmode=disable"),
+		DatabaseURL:    dbURL,
 		UploadDir:      getenv("UPLOAD_DIR", "./uploads"),
 		MigrationsDir:  getenv("MIGRATIONS_DIR", "./migrations"),
 		CORSOrigins:    origins,
-		CookieSecure:   secure,
-		CookieSameSite: strings.ToLower(getenv("COOKIE_SAMESITE", "lax")),
+		CookieSecure:       secure,
+		CookieSameSite:     strings.ToLower(getenv("COOKIE_SAMESITE", "lax")),
+		BlobReadWriteToken: os.Getenv("BLOB_READ_WRITE_TOKEN"),
+		UploadTokenSecret:  uploadTokenSecret(dbURL),
 	}
+}
+
+func uploadTokenSecret(dbURL string) string {
+	if secret := os.Getenv("UPLOAD_TOKEN_SECRET"); secret != "" {
+		return secret
+	}
+	sum := sha256.Sum256([]byte("upload-token:" + dbURL))
+	return hex.EncodeToString(sum[:])
 }
 
 func getenv(key, fallback string) string {

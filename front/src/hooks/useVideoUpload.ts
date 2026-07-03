@@ -1,12 +1,24 @@
 /* ===================================================
  * hooks/useVideoUpload.ts
  * [保護] 動画アップロードを抽象化するカスタムフック
- * multipart/form-data で POST /api/v1/videos を呼ぶ。
- * Content-Type はブラウザに自動設定させるため手動設定しない。
+ *
+ * 本番(Vercel):
+ *   Vercel の関数/コンテナには「リクエストボディ約4.5MB」の上限があり、
+ *   動画本体を API へ POST すると 413 で弾かれる。そのため
+ *   ブラウザから Vercel Blob へ「直接」アップロードし、
+ *   完了後に小さな JSON だけを API に送って DB 登録する。
+ *
+ * ローカル開発:
+ *   Blob を使わず、従来どおり multipart で API に直接送る。
  * =================================================== */
 
 import { useState, useCallback } from "react";
-import { API_BASE_URL, endpoints } from "../api/endpoints";
+import { upload } from "@vercel/blob/client";
+import {
+  API_BASE_URL,
+  API_DIRECT_BASE_URL,
+  endpoints,
+} from "../api/endpoints";
 
 /** ローカルファイルから再生時間（秒）を読み取る */
 function readVideoDurationSeconds(file: File): Promise<number | null> {
@@ -54,6 +66,59 @@ interface UseVideoUploadResult {
   reset: () => void;
 }
 
+/** 短命アップロードトークンを取得する（Cookie 認証・同一オリジン） */
+async function fetchUploadToken(): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}${endpoints.uploads.token}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error("AUTH");
+  }
+  const body = await res.json();
+  const token = body?.data?.token;
+  if (!token) {
+    throw new Error("TOKEN");
+  }
+  return token as string;
+}
+
+/** DB に動画レコードを登録する（ファイル本体は送らない小さな JSON） */
+async function registerVideo(
+  uploadToken: string,
+  params: {
+    blobUrl: string;
+    title: string;
+    description: string;
+    contentType: string;
+    durationSeconds: number | null;
+  },
+): Promise<UploadedVideo> {
+  const res = await fetch(`${API_BASE_URL}${endpoints.videos.create}`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Upload-Token": uploadToken,
+    },
+    body: JSON.stringify({
+      blob_url: params.blobUrl,
+      title: params.title,
+      description: params.description,
+      content_type: params.contentType,
+      duration_seconds:
+        params.durationSeconds != null ? params.durationSeconds : undefined,
+    }),
+  });
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = body?.error?.message ?? "アップロードに失敗しました";
+    throw new Error(msg);
+  }
+  return body.data as UploadedVideo;
+}
+
 export function useVideoUpload(): UseVideoUploadResult {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -89,68 +154,61 @@ export function useVideoUpload(): UseVideoUploadResult {
       setProgress(0);
 
       const durationSeconds = await readVideoDurationSeconds(file);
+      const ext = file.type === "video/webm" ? "webm" : "mp4";
 
-      // XMLHttpRequest でアップロード進捗を取得する
-      // fetch ではアップロード進捗が取れないため XHR を使用
-      return new Promise<UploadedVideo | null>((resolve) => {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("title", title.trim());
-        form.append("description", description);
-        if (durationSeconds != null) {
-          form.append("duration_seconds", String(durationSeconds));
+      try {
+        const uploadToken = await fetchUploadToken();
+
+        if (import.meta.env.PROD) {
+          // 本番: ブラウザ → Vercel Blob へ直接アップロード（大容量OK）
+          const pathname = `${crypto.randomUUID()}.${ext}`;
+          const blob = await upload(pathname, file, {
+            access: "public",
+            contentType: file.type,
+            multipart: true,
+            handleUploadUrl: `${API_BASE_URL}${endpoints.uploads.blob}`,
+            clientPayload: uploadToken,
+            onUploadProgress: (event) => {
+              setProgress(Math.min(99, Math.round(event.percentage)));
+            },
+          });
+
+          const created = await registerVideo(uploadToken, {
+            blobUrl: blob.url,
+            title: title.trim(),
+            description,
+            contentType: file.type,
+            durationSeconds,
+          });
+          setProgress(100);
+          setUploading(false);
+          return created;
         }
 
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            setProgress(Math.round((e.loaded / e.total) * 100));
-          }
+        // ローカル開発: 従来どおり multipart で API に直接送る
+        const created = await uploadMultipart(uploadToken, file, {
+          title: title.trim(),
+          description,
+          durationSeconds,
+          onProgress: (p) => setProgress(p),
         });
-
-        xhr.addEventListener("load", () => {
-          setUploading(false);
-          setProgress(100);
-          if (xhr.status === 201) {
-            try {
-              const body = JSON.parse(xhr.responseText);
-              resolve(body.data as UploadedVideo);
-            } catch {
-              setError("レスポンスの解析に失敗しました");
-              resolve(null);
-            }
-          } else {
-            try {
-              const body = JSON.parse(xhr.responseText);
-              const msg = body.error?.message ?? "アップロードに失敗しました";
-              if (xhr.status === 413) {
-                setError("ファイルが大きすぎます（上限500MB）");
-              } else if (xhr.status === 415) {
-                setError("MP4またはWebM形式のみアップロードできます");
-              } else if (xhr.status === 429) {
-                setError("アップロード頻度が高すぎます。しばらく待ってから再試行してください");
-              } else {
-                setError(msg);
-              }
-            } catch {
-              setError("アップロードに失敗しました");
-            }
-            resolve(null);
-          }
-        });
-
-        xhr.addEventListener("error", () => {
-          setUploading(false);
-          setError("ネットワークエラーが発生しました");
-          resolve(null);
-        });
-
-        xhr.open("POST", `${API_BASE_URL}${endpoints.videos.create}`);
-        xhr.withCredentials = true;
-        // Content-Type は設定しない（XHRがmultipart/form-dataとboundaryを自動設定する）
-        xhr.send(form);
-      });
+        setProgress(100);
+        setUploading(false);
+        return created;
+      } catch (err) {
+        setUploading(false);
+        const message = err instanceof Error ? err.message : "";
+        if (message === "AUTH") {
+          setError("ログインが必要です。再度ログインしてからお試しください");
+        } else if (message === "TOKEN") {
+          setError("アップロードトークンの取得に失敗しました");
+        } else if (message) {
+          setError(message);
+        } else {
+          setError("アップロードに失敗しました");
+        }
+        return null;
+      }
     },
     [],
   );
@@ -162,4 +220,65 @@ export function useVideoUpload(): UseVideoUploadResult {
   }, []);
 
   return { uploading, progress, error, uploadVideo, reset };
+}
+
+/** ローカル開発用: multipart アップロード（進捗付き XHR） */
+function uploadMultipart(
+  uploadToken: string,
+  file: File,
+  opts: {
+    title: string;
+    description: string;
+    durationSeconds: number | null;
+    onProgress: (percent: number) => void;
+  },
+): Promise<UploadedVideo> {
+  return new Promise<UploadedVideo>((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("title", opts.title);
+    form.append("description", opts.description);
+    if (opts.durationSeconds != null) {
+      form.append("duration_seconds", String(opts.durationSeconds));
+    }
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        opts.onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // レスポンスが JSON でない場合は body は null のまま
+      }
+      if (xhr.status === 201) {
+        const data = (body as { data?: UploadedVideo } | null)?.data;
+        if (data) {
+          resolve(data);
+        } else {
+          reject(new Error("レスポンスの解析に失敗しました"));
+        }
+        return;
+      }
+      const msg =
+        (body as { error?: { message?: string } } | null)?.error?.message ??
+        "アップロードに失敗しました";
+      reject(new Error(msg));
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new Error("ネットワークエラーが発生しました"));
+    });
+
+    xhr.open("POST", `${API_DIRECT_BASE_URL}${endpoints.videos.create}`);
+    xhr.setRequestHeader("X-Upload-Token", uploadToken);
+    xhr.withCredentials = true;
+    xhr.send(form);
+  });
 }

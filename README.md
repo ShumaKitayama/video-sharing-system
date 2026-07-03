@@ -22,8 +22,9 @@
 
 - **フロントエンド:** React / TypeScript / Vite
 - **バックエンド:** Go / Gin Web Framework
-- **データベース:** PostgreSQL
+- **データベース:** PostgreSQL（本番は Neon）
 - **インフラ環境:** Docker / Docker Compose / ローカル実行環境
+- **本番デプロイ（任意）:** Vercel（フロント=静的、API=コンテナ）+ Vercel Blob（動画実体）
 
 ---
 
@@ -43,6 +44,8 @@
                                                               ▼
                                                         [ PostgreSQL ]
 ```
+
+> **本番（Vercel）構成**: フロントとバックエンドを Vercel の別プロジェクトとして配置し、フロントの rewrite で同一オリジン化する。動画実体はローカルディスクではなく **Vercel Blob** に保存し、大容量アップロードはブラウザから Blob へ直接送る（Vercel のボディ 4.5MB 制限を回避）。詳細は [`back/deployment-and-storage.md`](./back/deployment-and-storage.md)。
 
 ---
 

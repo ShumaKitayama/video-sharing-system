@@ -26,7 +26,7 @@ func New(cfg config.Config, deps api.Deps) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.CORSOrigins,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "X-Request-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "X-Request-ID", "X-Upload-Token"},
 		ExposeHeaders:    []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,

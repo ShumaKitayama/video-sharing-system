@@ -18,8 +18,11 @@ APIは、フロントエンドが安全に使える「決まった窓口」を�
 | 用途 | Content-Type |
 | --- | --- |
 | 通常JSON | `application/json` |
-| 動画アップロード | `multipart/form-data` |
-| 動画配信 | 動画のMIME型に応じて `video/mp4` / `video/webm` |
+| 動画アップロード（ローカル） | `multipart/form-data` |
+| 動画アップロード（本番 Blob 登録） | `application/json` |
+| 動画配信 | 動画のMIME型に応じて `video/mp4` / `video/webm`（本番は Blob へ 307 リダイレクト） |
+
+> 本番（Vercel）では、動画本体は API を経由せずブラウザから Vercel Blob へ直接アップロードする。詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) を参照。
 
 ### 1.4 IDと日時
 
@@ -133,7 +136,7 @@ APIは、フロントエンドが安全に使える「決まった窓口」を�
 | 403 | `FORBIDDEN` | 権限不足 |
 | 404 | `NOT_FOUND` | 対象なし |
 | 409 | `CONFLICT` | 重複、状態衝突 |
-| 413 | `PAYLOAD_TOO_LARGE` | 動画サイズ超過 |
+| 413 | `PAYLOAD_TOO_LARGE` | 動画サイズ超過（※本番 Vercel ではプラットフォーム層がボディ約4.5MBで返すことがある。回避策は [`deployment-and-storage.md`](./deployment-and-storage.md) 第2.3章） |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | 非対応動画形式 |
 | 429 | `RATE_LIMITED` | 短時間連打 |
 | 500 | `INTERNAL_ERROR` | サーバー内部異常 |
@@ -439,24 +442,46 @@ DB接続、保存ディレクトリの書き込み可否など、実処理に必
 
 ### 8.3 `POST /videos`
 
-ログイン必須。動画をアップロードする。
+ログイン必須。動画を登録する。**Content-Type によって 2 つの入力形式**を受け付ける。
 
-#### Multipart Fields
+#### 形式 A: `multipart/form-data`（ローカル開発の従来方式）
 
 | フィールド | 必須 | 説明 |
 | --- | --- | --- |
 | `file` | 必須 | MP4またはWebM |
 | `title` | 必須 | 1〜80文字 |
 | `description` | 任意 | 0〜1000文字 |
+| `duration_seconds` | 任意 | 再生時間（秒） |
 
-#### 実装上の注意
+実装上の注意:
 
 1. `handler` でファイルを丸ごとメモリに読まない
 2. `storage` へ固定長バッファで逐次保存する
 3. DB保存に失敗した場合は保存済みファイルを削除する
 4. MIME型と拡張子は両方確認する
 
-#### Response `201`
+#### 形式 B: `application/json`（本番: Blob 直接アップロード後の登録）
+
+ブラウザが先に Vercel Blob へ動画本体を直接アップロードし、その公開 URL だけを登録する。
+
+```json
+{
+  "blob_url": "https://<store>.public.blob.vercel-storage.com/<uuid>.mp4",
+  "title": "理科の実験",
+  "description": "水の状態変化",
+  "content_type": "video/mp4",
+  "duration_seconds": 42
+}
+```
+
+サーバー側の検証:
+
+1. `blob_url` のホストが `*.blob.vercel-storage.com` であること
+2. HEAD で実体を確認し、サイズ（500MB以下）と MIME（MP4/WebM）が妥当であること
+
+事前フローの詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章を参照。
+
+#### Response `201`（両形式共通）
 
 ```json
 {
@@ -508,6 +533,37 @@ DBは論理削除、動画ファイルは削除キューなしで即時削除す
 ログイン中ユーザーが投稿した動画一覧を返す。  
 自分の非表示動画も取得できる。
 
+### 8.8 `POST /uploads/token`
+
+ログイン必須（Cookie）。大容量アップロード用の短命トークン（HMAC 署名・15分）を発行する。  
+本番でブラウザが Blob へ直接アップロードする際の認可に使う。
+
+#### Response `200`
+
+```json
+{
+  "data": {
+    "token": "12:student:1783085641:9f3c..."
+  }
+}
+```
+
+### 8.9 `POST /uploads/blob`
+
+`@vercel/blob` クライアントアップロードの「トークン発行窓口」（`handleUploadUrl`）。  
+認可は Cookie または `8.8` のトークン（リクエストの `clientPayload`）で行う。動画本体はここを通らない。
+
+- `type: "blob.generate-client-token"`: Blob クライアントトークンを返す
+
+```json
+{
+  "type": "blob.generate-client-token",
+  "clientToken": "vercel_blob_client_<storeId>_..."
+}
+```
+
+> このエンドポイントは共通レスポンス（`data` ラップ）ではなく、`@vercel/blob` が要求する固定形状で返す点に注意。詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
+
 ---
 
 ## 9. ストリーミングAPI
@@ -547,6 +603,17 @@ Content-Type: video/mp4
 - `http.ServeContent` または同等のRange処理を使う
 - 非表示動画は投稿者本人または先生のみ再生可能
 - 再生開始時に再生回数を1増やす
+
+### 9.4 保存先による分岐
+
+`storage_key` の形で配信方法が変わる。
+
+| `storage_key` | 挙動 |
+| --- | --- |
+| 相対キー（例 `videos/2026/07/<uuid>.mp4`） | ディスクから Range 配信（`200` / `206`） |
+| `https://...` の Blob URL | `307 Temporary Redirect` で Blob の公開 URL へ |
+
+本番のストリームログに `307` が出るのは正常。詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第3章。
 
 ---
 
@@ -725,12 +792,15 @@ PATCH   /api/v1/users/:id
 DELETE  /api/v1/users/:id
 
 GET     /api/v1/videos
-POST    /api/v1/videos
+POST    /api/v1/videos               # multipart（ローカル）/ JSON（本番 Blob 登録）
 GET     /api/v1/videos/:id
 PATCH   /api/v1/videos/:id
 DELETE  /api/v1/videos/:id
 GET     /api/v1/me/videos
 GET     /api/v1/videos/:id/stream
+
+POST    /api/v1/uploads/token        # 大容量アップロード用トークン発行
+POST    /api/v1/uploads/blob         # @vercel/blob クライアントトークン窓口
 
 GET     /api/v1/videos/:id/comments
 POST    /api/v1/videos/:id/comments
