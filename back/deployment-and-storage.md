@@ -247,6 +247,24 @@ hmacHex    = HEX( HMAC-SHA256( key = READ/WRITE トークン全体, msg = base64
 
 ## 6. デプロイ手順
 
+### 6.0 モノレポの Root Directory（Git 連携で必須）
+
+リポジトリは `server/`（API）と `front/`（フロント）のモノレポ構成である。Vercel プロジェクトごとに **Root Directory** を設定しないと、PR の Git 連携デプロイがリポジトリルート（`.`）で実行され、コンテナビルドが 14ms で空終了 → **Error** になる。
+
+| Vercel プロジェクト | Root Directory | Framework |
+| --- | --- | --- |
+| `video-sharing-api` | `server` | Container（`Dockerfile.vercel`） |
+| `video-sharing-front` | `front` | Vite |
+
+確認コマンド:
+
+```bash
+npx vercel@latest project inspect video-sharing-api   # Root Directory: server
+npx vercel@latest project inspect video-sharing-front # Root Directory: front
+```
+
+Dashboard: Project Settings → General → **Root Directory**。
+
 Vercel CLI は最新版を使う（コンテナビルドに新しい API バージョンが必要）。
 
 ```bash
@@ -277,6 +295,7 @@ npx vercel@latest --prod
 - **Blob 導入前にアップロードした動画**は DB に残るがファイル実体が無い（`/tmp` 消失）。再アップロードするか削除する。
 - Vercel 本番の Gin ログに `debug mode` 警告が出る（動作には影響しない）。必要なら release モード化。
 - ローカル開発は Blob を使わない。`BLOB_READ_WRITE_TOKEN` をローカルに設定すると本番 Blob を汚すため、通常は設定しない。
+- **PR の Vercel チェックが Error（Build 14ms で終了）** → Root Directory が `.` のままになっていないか確認（上記 6.0）。
 
 ---
 
