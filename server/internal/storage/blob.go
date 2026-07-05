@@ -87,7 +87,8 @@ func statBlob(ctx context.Context, blobURL string) (size int64, contentType stri
 	if err != nil {
 		return 0, "", err
 	}
-	res, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	res, err := client.Do(req)
 	if err != nil {
 		return 0, "", err
 	}
