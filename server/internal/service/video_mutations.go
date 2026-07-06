@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -13,6 +15,75 @@ import (
 	"video-sharing-system/server/internal/repository"
 	"video-sharing-system/server/internal/validation"
 )
+
+const (
+	blobUploadMaxBytes    = 500 * 1024 * 1024
+	blobClientTokenExpiry = time.Hour
+)
+
+var blobAllowedContentTypes = []string{"video/mp4", "video/webm"}
+
+// IssueBlobUploadToken returns a browser upload token for a direct-to-Blob upload.
+func (s *VideoService) IssueBlobUploadToken(pathname string) (string, error) {
+	return s.store.IssueBlobClientToken(pathname, blobAllowedContentTypes, blobUploadMaxBytes, blobClientTokenExpiry)
+}
+
+// BlobEnabled reports whether direct Blob uploads are available.
+func (s *VideoService) BlobEnabled() bool {
+	return s.store.BlobEnabled()
+}
+
+// RegisterBlobVideo creates a video record for a file the browser already
+// uploaded directly to Vercel Blob. No file bytes flow through the API here.
+func (s *VideoService) RegisterBlobVideo(ctx context.Context, uploaderID int64, title, description, blobURL, declaredMIME string, duration *int32) (VideoDTO, error) {
+	parsed, err := url.Parse(strings.TrimSpace(blobURL))
+	if err != nil || parsed.Scheme != "https" || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".blob.vercel-storage.com") {
+		return VideoDTO{}, ErrInvalidBlobURL
+	}
+
+	// HEAD the object to confirm it exists and to read authoritative metadata.
+	size, headContentType, err := s.store.StatBlob(ctx, blobURL)
+	if err != nil {
+		return VideoDTO{}, ErrInvalidBlobURL
+	}
+	if size <= 0 {
+		return VideoDTO{}, ErrInvalidBlobURL
+	}
+	if size > blobUploadMaxBytes {
+		return VideoDTO{}, ErrPayloadTooLarge
+	}
+
+	name := strings.TrimSpace(filepath.Base(parsed.Path))
+	if name == "" {
+		name = "video.mp4"
+	}
+	if utf8.RuneCountInString(name) > 255 {
+		name = string([]rune(name)[:255])
+	}
+
+	// Prefer the blob's stored content type; fall back to the client hint.
+	mime := strings.TrimSpace(strings.ToLower(headContentType))
+	if !validation.IsAllowedVideoMIME(mime) {
+		mime = strings.TrimSpace(strings.ToLower(declaredMIME))
+	}
+	if !validation.IsAllowedVideoMIME(mime) || !validation.FilenameMatchesMIME(name, mime) {
+		return VideoDTO{}, ErrUnsupportedMedia
+	}
+
+	row, err := s.repo.Create(ctx, uploaderID, strings.TrimSpace(title), description, blobURL, name, mime, size, duration)
+	if err != nil {
+		return VideoDTO{}, err
+	}
+
+	full, err := s.repo.FindByPublicID(ctx, row.PublicID)
+	if err != nil {
+		return VideoDTO{}, err
+	}
+	if full == nil {
+		return VideoDTO{}, ErrNotFound
+	}
+	return dtoFromVideoRow(*full), nil
+}
 
 func (s *VideoService) UploadVideo(ctx context.Context, uploaderID int64, title, description, declaredMIME, originalFilename string, duration *int32, src io.Reader) (VideoDTO, error) {
 	mime := strings.TrimSpace(strings.ToLower(declaredMIME))

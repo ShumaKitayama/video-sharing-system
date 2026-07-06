@@ -13,6 +13,9 @@ import VideoPreview from "../internal/VideoPreview";
 
 interface VideoCardProps {
   video: Video;
+  canDelete?: boolean;
+  deleting?: boolean;
+  onDelete?: (videoId: string) => void;
 }
 
 function formatDuration(seconds: number | null | undefined): string | null {
@@ -41,7 +44,12 @@ function formatTimeAgo(dateStr: string): string {
   return `${Math.floor(months / 12)}年前`;
 }
 
-export default function VideoCard({ video }: VideoCardProps) {
+export default function VideoCard({
+  video,
+  canDelete = false,
+  deleting = false,
+  onDelete,
+}: VideoCardProps) {
   const navigate = useNavigate();
   const [detectedDuration, setDetectedDuration] = useState<number | null>(null);
   const displayDuration = video.duration_seconds ?? detectedDuration;
@@ -72,6 +80,19 @@ export default function VideoCard({ video }: VideoCardProps) {
 
         {/* 右サイドアクションボタン */}
         <div className="video-card__actions">
+          {canDelete && onDelete && (
+            <button
+              className="video-card__action-btn video-card__action-btn--danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                void onDelete(video.id);
+              }}
+              disabled={deleting}
+              title="削除"
+            >
+              🗑
+            </button>
+          )}
           <button className="video-card__action-btn" onClick={(e) => e.stopPropagation()} title="いいね">
             ♡
           </button>

@@ -9,6 +9,9 @@ import VideoCard from "./VideoCard";
 interface VideoGridProps {
   videos: Video[];
   loading?: boolean;
+  canDelete?: boolean;
+  deleting?: boolean;
+  onDelete?: (videoId: string) => void;
 }
 
 function SkeletonCard() {
@@ -23,7 +26,13 @@ function SkeletonCard() {
   );
 }
 
-export default function VideoGrid({ videos, loading }: VideoGridProps) {
+export default function VideoGrid({
+  videos,
+  loading,
+  canDelete = false,
+  deleting = false,
+  onDelete,
+}: VideoGridProps) {
   if (loading) {
     return (
       <div className="video-grid">
@@ -46,7 +55,13 @@ export default function VideoGrid({ videos, loading }: VideoGridProps) {
   return (
     <div className="video-grid">
       {videos.map((video) => (
-        <VideoCard key={video.id} video={video} />
+        <VideoCard
+          key={video.id}
+          video={video}
+          canDelete={canDelete}
+          deleting={deleting}
+          onDelete={onDelete}
+        />
       ))}
     </div>
   );

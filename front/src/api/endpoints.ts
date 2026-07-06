@@ -5,8 +5,29 @@
  * =================================================== */
 
 /** APIベースURL（環境変数から取得、デフォルトはローカル開発用） */
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+function resolveApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_BASE_URL;
+  if (typeof fromEnv === "string") {
+    return fromEnv;
+  }
+  // Vercel 本番: フロント vercel.json の rewrite 経由で同一オリジンに API を中継
+  return import.meta.env.PROD ? "" : "http://localhost:8080";
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+/** 大容量アップロード用の API 直 URL（Cookie ではなくトークン認証） */
+function resolveDirectApiBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_DIRECT_URL;
+  if (typeof fromEnv === "string" && fromEnv) {
+    return fromEnv;
+  }
+  return import.meta.env.PROD
+    ? "https://video-sharing-api.vercel.app"
+    : "http://localhost:8080";
+}
+
+export const API_DIRECT_BASE_URL = resolveDirectApiBaseUrl();
 
 /** APIバージョンプレフィックス */
 const V1 = "/api/v1";
@@ -30,6 +51,12 @@ export const endpoints = {
     delete: (id: string) => `${V1}/videos/${id}`,
     myVideos: `${V1}/me/videos`,
     stream: (id: string) => `${V1}/videos/${id}/stream`,
+  },
+
+  // アップロード
+  uploads: {
+    token: `${V1}/uploads/token`,
+    blob: `${V1}/uploads/blob`,
   },
 
   // コメント

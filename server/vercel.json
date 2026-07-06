@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "UPLOAD_DIR": "/tmp/uploads",
+    "MIGRATIONS_DIR": "/app/migrations",
+    "COOKIE_SECURE": "true",
+    "COOKIE_SAMESITE": "lax"
+  }
+}

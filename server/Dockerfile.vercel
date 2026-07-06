@@ -1,0 +1,18 @@
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY migrations ./migrations
+COPY --from=build /out/api /usr/local/bin/api
+RUN mkdir -p /tmp/uploads
+ENV UPLOAD_DIR=/tmp/uploads
+ENV MIGRATIONS_DIR=/app/migrations
+ENV PORT=80
+CMD ["/usr/local/bin/api"]

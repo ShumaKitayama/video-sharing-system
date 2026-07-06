@@ -48,6 +48,8 @@ storage      ファイル保存と読み出しだけを扱う
 - クラウドストレージ、マイクロサービス、分散キャッシュは採用しない
 - 先生権限と生徒権限だけを用意し、権限モデルを増やしすぎない
 
+> **本番運用（Vercel）の例外**: インターネット上でも動かせるよう、動画実体は Vercel Blob に保存し、大容量アップロードはブラウザから Blob へ直接送る方式を追加している。ローカル LAN・ネイティブ実行の挙動は壊さない（デュアルモード）。設計の正本は [`deployment-and-storage.md`](./deployment-and-storage.md)。
+
 ### 2.3 メモリ安全性
 
 動画は大きいので、次の禁止事項を設計段階から守る。
@@ -111,6 +113,8 @@ storage      ファイル保存と読み出しだけを扱う
 | [`api-design.md`](./api-design.md) | REST API、認証、エラー、各エンドポイント仕様 |
 | [`database-design.md`](./database-design.md) | テーブル、制約、ER関係、DDL、インデックス |
 | [`query-catalog.md`](./query-catalog.md) | 実装で使うSQLクエリ一覧、トランザクション例 |
+| [`deployment-and-storage.md`](./deployment-and-storage.md) | Vercel 本番構成、Vercel Blob 永続化、大容量アップロード方式 |
+| [`BACKEND_API_GUIDE.md`](./BACKEND_API_GUIDE.md) | フロントから API を呼ぶ実務ガイド（起動・呼び出し例） |
 
 ---
 
@@ -149,7 +153,7 @@ server/
 
 ## 6. データの大まかな流れ
 
-### 6.1 動画アップロード
+### 6.1 動画アップロード（ローカル: multipart）
 
 ```txt
 Browser
@@ -159,11 +163,29 @@ handler.UploadVideo
 service.UploadVideo
   ├─ 入力検証
   ├─ 権限確認
-  ├─ storage.SaveVideoStream
+  ├─ storage.SaveVideoStream（ディスク or Blob）
   └─ repository.CreateVideo
   ↓
 JSONレスポンス
 ```
+
+### 6.1.1 動画アップロード（本番: ブラウザ → Blob 直接）
+
+Vercel のボディ約4.5MB制限を回避するため、本番では動画本体を API に通さない。
+
+```txt
+Browser
+  ├─ POST /uploads/token   … 短命トークン取得（Cookie）
+  ├─ POST /uploads/blob    … Blob クライアントトークン取得
+  ├─ PUT  → Vercel Blob    … 動画本体を直接アップロード（API 非経由）
+  └─ POST /videos (JSON)   … blob_url を登録
+        ↓ handler.UploadVideo（JSON 分岐）
+        service.RegisterBlobVideo（HEAD で実体確認 → repository.CreateVideo）
+  ↓
+JSONレスポンス
+```
+
+詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
 
 ### 6.2 動画再生
 
@@ -235,9 +257,12 @@ JSONレスポンス
 ### 8.3 ファイル
 
 - DBには絶対パスを持たせない
-- DBには相対的な `storage_key` を保存する
+- DBには `storage_key` を保存する
+  - ローカル/Docker: 相対保存キー（例 `videos/2026/07/<uuid>.mp4`）
+  - Vercel Blob: 公開 URL（例 `https://<store>.public.blob.vercel-storage.com/<uuid>.mp4`）
 - 元ファイル名は表示用として別カラムに持つ
 - 保存名は衝突しないUUIDベースにする
+- 保存先は `BLOB_READ_WRITE_TOKEN` の有無で `storage` 層が自動判定する
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "gopls": {
+    "build.directoryFilters": [
+      "-node_modules",
+      "-.vercel"
+    ]
+  }
+}

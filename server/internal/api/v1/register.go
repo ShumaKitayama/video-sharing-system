@@ -13,6 +13,6 @@ func Register(g *gin.RouterGroup, cfg config.Config, deps api.Deps) {
 	registerAuthRoutes(g, cfg, deps)
 	registerTeacherUserRoutes(g, deps)
 	registerUserRoutes(g, deps)
-	registerVideoRoutes(g, deps)
+	registerVideoRoutes(g, cfg, deps)
 	registerCommentAndLikeRoutes(g, deps)
 }

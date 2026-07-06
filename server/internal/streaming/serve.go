@@ -13,6 +13,11 @@ import (
 
 // ServeFile streams file with Range support without buffering entire file.
 func ServeFile(w http.ResponseWriter, req *http.Request, store *storage.VideoStorage, storageKey string, modTime time.Time) error {
+	if strings.HasPrefix(storageKey, "https://") {
+		http.Redirect(w, req, storageKey, http.StatusTemporaryRedirect)
+		return nil
+	}
+
 	path := store.AbsolutePath(storageKey)
 	root := filepath.Clean(store.Root())
 	target := filepath.Clean(path)

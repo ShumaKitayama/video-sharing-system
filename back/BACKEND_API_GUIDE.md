@@ -23,6 +23,8 @@
 
 ## 1. 全体像
 
+### ローカル開発
+
 ```txt
 ブラウザ (React :5173)
     │  HTTP (JSON / multipart / 動画バイナリ)
@@ -35,6 +37,18 @@ Go API サーバー (:8080)
             ├── PostgreSQL       … メタデータ（ユーザー・動画情報など）
             └── ローカルディスク   … 動画ファイル実体（UPLOAD_DIR）
 ```
+
+### 本番（Vercel）
+
+```txt
+ブラウザ
+    │  同一オリジン（フロントの rewrite で /api/* を API に中継）
+    ├─ 小さな JSON / 認証 ─▶ フロント(静的) ─▶ Go API(コンテナ) ─▶ Neon PostgreSQL + Vercel Blob
+    ├─ 動画本体 ──────────────────────────────────────▶ Vercel Blob（直接・API 非経由）
+    └─ 再生 GET .../stream ─▶ API が 307 ─▶ Vercel Blob 公開 URL
+```
+
+本番構成・大容量アップロードの仕組みは [`back/deployment-and-storage.md`](./deployment-and-storage.md) が正本。
 
 ### バックエンドが提供する機能
 
@@ -680,9 +694,26 @@ async function uploadVideo(file: File, title: string, description: string) {
 }
 ```
 
+### 本番（Vercel）での大容量アップロード
+
+Vercel には**リクエストボディ約 4.5MB の上限**があり、動画本体を `POST /videos` に送ると `413` になる（ブラウザ上は CORS エラーに見える）。そのため本番では、ブラウザから **Vercel Blob へ動画本体を直接アップロード**し、完了後に小さな JSON だけを API に送る。
+
+```txt
+① POST /api/v1/uploads/token   … 短命トークン取得（Cookie）
+② POST /api/v1/uploads/blob    … Blob クライアントトークン取得
+③ PUT → Vercel Blob            … 動画本体を直接アップロード（API 非経由・進捗取得可）
+④ POST /api/v1/videos (JSON)   … { blob_url, title, description, content_type, duration_seconds }
+```
+
+この分岐は [`front/src/hooks/useVideoUpload.ts`](../front/src/hooks/useVideoUpload.ts) に実装済みで、`import.meta.env.PROD` で自動的に切り替わる（ローカルは上記 multipart 方式）。**学生・UI 側は `uploadVideo()` を呼ぶだけ**でよい。詳細は [`back/deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
+
+依存: `@vercel/blob`（`upload()` を使用、大容量は自動で分割アップロード）。
+
 ### アップロード進捗について
 
-標準 `fetch` ではアップロード進捗が取れません。進捗バーが必要な場合は `XMLHttpRequest` または将来の拡張が必要です。現状のモック UI は疑似進捗です。
+- 本番の直接アップロードは `@vercel/blob` の `onUploadProgress` で進捗を取得する。
+- ローカルの multipart は `XMLHttpRequest` の `upload.onprogress` で進捗を取得する。
+- いずれも `useVideoUpload` の `progress`（0〜100）で受け取れる。
 
 ---
 
@@ -736,6 +767,15 @@ Content-Type: video/mp4
 ```
 
 再生開始時に `view_count` が 1 増えます（同一視聴者の短時間連打は除外）。
+
+### 本番（Vercel）の挙動
+
+本番では動画実体が Vercel Blob にあるため、`GET .../stream` は **`307` で Blob の公開 URL にリダイレクト**する。`<video src>` はブラウザが自動的にリダイレクト先を辿るので、フロント側の実装変更は不要。
+
+| 保存先 | ステータス |
+| --- | --- |
+| ローカルディスク | `200` / `206`（Range 配信） |
+| Vercel Blob | `307`（Blob 公開 URL へ） |
 
 ### 注意
 
@@ -862,6 +902,7 @@ Docker の場合は `docker-compose.yml` の `api.environment.CORS_ORIGINS` を�
 | --- | --- |
 | [`back/api-design.md`](../back/api-design.md) | API 設計の正本 |
 | [`back/database-design.md`](../back/database-design.md) | DB スキーマ |
+| [`back/deployment-and-storage.md`](../back/deployment-and-storage.md) | Vercel 本番構成・Blob・大容量アップロード |
 | [`AGENTS.md`](../AGENTS.md) | 編集可能領域・保護領域のルール |
 | [`front/src/api/endpoints.ts`](../front/src/api/endpoints.ts) | エンドポイント定数 |
 | [`scripts/e2e_smoke.sh`](../scripts/e2e_smoke.sh) | API 動作の自動スモークテスト |
