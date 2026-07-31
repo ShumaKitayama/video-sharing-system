@@ -1,0 +1,23 @@
+# Docker イメージに入れないもの（ビルドを速く・軽くするため）
+
+# ホスト（macOS/Windows）用にインストールされた依存。
+# コンテナ内では Linux 用を npm ci で入れ直すので持ち込まない。
+node_modules
+
+# ビルド成果物
+dist
+dist-ssr
+
+# Vercel CLI のローカル設定と環境変数（トークンが入るため持ち込まない）
+.vercel
+.env
+.env.*
+*.local
+
+# その他
+.git
+.DS_Store
+*.log
+implementation_plan.md
+Dockerfile.dev
+.dockerignore

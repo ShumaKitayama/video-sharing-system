@@ -11,6 +11,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "docker:build": "docker build -f Dockerfile.dev -t video-front-dev .",
+    "docker:dev": "docker run --rm -it -p 5173:5173 -v \"$PWD\":/app -v /app/node_modules video-front-dev",
     "vercel:deploy": "vercel deploy",
     "vercel:deploy:prod": "vercel deploy --prod"
   },

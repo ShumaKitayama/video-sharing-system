@@ -104,6 +104,23 @@ Docker環境が利用可能な場合、以下のコマンド1つでデータベ�
 docker compose up --build
 ```
 
+### C. フロントエンドだけ Docker で起動（バックエンドは Vercel）
+
+UIの改善に集中したい場合、フロントエンドだけをコンテナで起動し、バックエンドはVercel上の稼働中APIを利用できる。Node.jsやPostgreSQLのローカル準備は不要である。
+
+```bash
+cd front
+npm run docker:build   # 初回のみ
+npm run docker:dev
+```
+
+- 起動後、ブラウザで `http://localhost:5173` にアクセス。
+- `front/src/` を編集すると即座にブラウザへ反映される（HMR）。
+- **実行手順（コピペ用）:** [`front/実行手順.md`](./front/実行手順.md)
+- **仕組み・トラブル詳細:** [`front/DOCKER.md`](./front/DOCKER.md)
+
+> ブラウザから別ドメインのAPIを直接呼ぶとログインCookieが送信されないため、Vite開発サーバーが `/api/*` をVercelのAPIへ中継して同一オリジン化している（本番の `front/vercel.json` の rewrite と同じ考え方）。
+
 ---
 
 ## ⚡ 授業・デモ運用のための技術的特徴

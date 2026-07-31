@@ -4,11 +4,22 @@
  * バックエンドのベースURLとパスを一元管理する
  * =================================================== */
 
+/**
+ * リモート（Vercel）のバックエンドに接続するモードか。
+ * Docker（front/Dockerfile.dev）で起動したときに true になる。
+ */
+export const USE_REMOTE_BACKEND =
+  import.meta.env.VITE_REMOTE_BACKEND === "true";
+
 /** APIベースURL（環境変数から取得、デフォルトはローカル開発用） */
 function resolveApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL;
   if (typeof fromEnv === "string") {
     return fromEnv;
+  }
+  // Docker 開発: Vite の dev proxy 経由で同一オリジンに API を中継
+  if (USE_REMOTE_BACKEND) {
+    return "";
   }
   // Vercel 本番: フロント vercel.json の rewrite 経由で同一オリジンに API を中継
   return import.meta.env.PROD ? "" : "http://localhost:8080";
@@ -21,6 +32,10 @@ function resolveDirectApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_DIRECT_URL;
   if (typeof fromEnv === "string" && fromEnv) {
     return fromEnv;
+  }
+  // Docker 開発: ローカルの API は無いので dev proxy 経由に揃える
+  if (USE_REMOTE_BACKEND) {
+    return "";
   }
   return import.meta.env.PROD
     ? "https://video-sharing-api.vercel.app"

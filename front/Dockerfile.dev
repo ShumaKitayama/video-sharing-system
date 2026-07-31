@@ -1,0 +1,35 @@
+# =====================================================
+# front/Dockerfile.dev
+# フロントエンド（Vite 開発サーバー）だけを Docker で動かすためのイメージ。
+# バックエンドは Vercel 上の API を使うので、このイメージ単体で完結する。
+# docker compose は使わない（バックエンドと分離して動かすため）。
+# =====================================================
+
+# .nvmrc の 20.19 と package.json の engines に合わせる
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 依存関係だけ先にインストールする。
+# ソースを書き換えてもこのレイヤーは再利用されるので、2回目以降のビルドが速い。
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+
+# リモート（Vercel）のバックエンドに接続するモード。
+# - API 呼び出しは Vite の dev proxy 経由で同一オリジン化され、ログイン Cookie が届く
+# - 動画アップロードは Vercel Blob への直接アップロード方式になる
+ENV VITE_REMOTE_BACKEND=true
+
+# 接続先の API。別のサーバーを使うときは docker run の -e で上書きする。
+ENV VITE_REMOTE_BACKEND_URL=https://video-sharing-api.vercel.app
+
+# バインドマウントしたファイルの変更はコンテナ内の inotify に届かないため、
+# ポーリングで監視して HMR（保存すると即反映）を確実に動かす。
+ENV VITE_DEV_POLLING=true
+
+EXPOSE 5173
+
+# --host 0.0.0.0 が無いとコンテナの外（ホストのブラウザ）から接続できない。
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
