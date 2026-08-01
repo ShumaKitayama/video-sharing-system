@@ -2,13 +2,13 @@
  * hooks/useVideoUpload.ts
  * [保護] 動画アップロードを抽象化するカスタムフック
  *
- * 本番(Vercel):
+ * 本番(Vercel) / Docker からリモート API に接続時:
  *   Vercel の関数/コンテナには「リクエストボディ約4.5MB」の上限があり、
  *   動画本体を API へ POST すると 413 で弾かれる。そのため
  *   ブラウザから Vercel Blob へ「直接」アップロードし、
  *   完了後に小さな JSON だけを API に送って DB 登録する。
  *
- * ローカル開発:
+ * ローカル開発（ローカルの Go API に接続時）:
  *   Blob を使わず、従来どおり multipart で API に直接送る。
  * =================================================== */
 
@@ -17,8 +17,16 @@ import { upload } from "@vercel/blob/client";
 import {
   API_BASE_URL,
   API_DIRECT_BASE_URL,
+  USE_REMOTE_BACKEND,
   endpoints,
 } from "../api/endpoints";
+
+/**
+ * Vercel Blob への直接アップロード方式を使うか。
+ * 本番に加え、Docker からリモート API に繋いでいるときも有効にする
+ * （リモート API はリクエストボディ約4.5MBの上限があるため）。
+ */
+const USE_BLOB_UPLOAD = import.meta.env.PROD || USE_REMOTE_BACKEND;
 
 /** ローカルファイルから再生時間（秒）を読み取る */
 function readVideoDurationSeconds(file: File): Promise<number | null> {
@@ -159,8 +167,8 @@ export function useVideoUpload(): UseVideoUploadResult {
       try {
         const uploadToken = await fetchUploadToken();
 
-        if (import.meta.env.PROD) {
-          // 本番: ブラウザ → Vercel Blob へ直接アップロード（大容量OK）
+        if (USE_BLOB_UPLOAD) {
+          // ブラウザ → Vercel Blob へ直接アップロード（大容量OK）
           const pathname = `${crypto.randomUUID()}.${ext}`;
           const blob = await upload(pathname, file, {
             access: "public",
