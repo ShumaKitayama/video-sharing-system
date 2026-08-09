@@ -101,7 +101,7 @@ func newTestServer(dir string) *httptest.Server {
 		CookieSameSite: "lax",
 	}
 
-	store := storage.NewVideoStorage(dir, "")
+	store := storage.NewVideoStorage(dir, "", nil)
 
 	userRepo := repository.NewUserRepository(testPool)
 	sessRepo := repository.NewSessionRepository(testPool)

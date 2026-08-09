@@ -696,23 +696,24 @@ async function uploadVideo(file: File, title: string, description: string) {
 
 ### 本番（Vercel）での大容量アップロード
 
-Vercel には**リクエストボディ約 4.5MB の上限**があり、動画本体を `POST /videos` に送ると `413` になる（ブラウザ上は CORS エラーに見える）。そのため本番では、ブラウザから **Vercel Blob へ動画本体を直接アップロード**し、完了後に小さな JSON だけを API に送る。
+Vercel には**リクエストボディ約 4.5MB の上限**があり、動画本体を `POST /videos` に送ると `413` になる（ブラウザ上は CORS エラーに見える）。そのため本番では、ブラウザから **Cloudflare R2 へ動画本体を直接アップロード**し、完了後に小さな JSON だけを API に送る。
 
 ```txt
 ① POST /api/v1/uploads/token   … 短命トークン取得（Cookie）
-② POST /api/v1/uploads/blob    … Blob クライアントトークン取得
-③ PUT → Vercel Blob            … 動画本体を直接アップロード（API 非経由・進捗取得可）
+② POST /api/v1/uploads/direct  … 署名付きアップロードURL取得 { content_type }
+③ PUT → Cloudflare R2          … 動画本体を直接アップロード（API 非経由・進捗取得可）
 ④ POST /api/v1/videos (JSON)   … { blob_url, title, description, content_type, duration_seconds }
 ```
 
+④ の `blob_url` には ② で返ってきた `public_url` を入れる（フィールド名は旧方式との互換で据え置き）。
+
 この分岐は [`front/src/hooks/useVideoUpload.ts`](../front/src/hooks/useVideoUpload.ts) に実装済みで、`import.meta.env.PROD` で自動的に切り替わる（ローカルは上記 multipart 方式）。**学生・UI 側は `uploadVideo()` を呼ぶだけ**でよい。詳細は [`back/deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
 
-依存: `@vercel/blob`（`upload()` を使用、大容量は自動で分割アップロード）。
+外部依存は無い（`XMLHttpRequest` のみ）。
 
 ### アップロード進捗について
 
-- 本番の直接アップロードは `@vercel/blob` の `onUploadProgress` で進捗を取得する。
-- ローカルの multipart は `XMLHttpRequest` の `upload.onprogress` で進捗を取得する。
+- 直接アップロードも multipart も `XMLHttpRequest` の `upload.onprogress` で進捗を取得する。
 - いずれも `useVideoUpload` の `progress`（0〜100）で受け取れる。
 
 ---

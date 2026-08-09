@@ -536,7 +536,7 @@ DBは論理削除、動画ファイルは削除キューなしで即時削除す
 ### 8.8 `POST /uploads/token`
 
 ログイン必須（Cookie）。大容量アップロード用の短命トークン（HMAC 署名・15分）を発行する。  
-本番でブラウザが Blob へ直接アップロードする際の認可に使う。
+本番でブラウザがクラウドストレージへ直接アップロードする際の認可に使う。
 
 #### Response `200`
 
@@ -548,21 +548,37 @@ DBは論理削除、動画ファイルは削除キューなしで即時削除す
 }
 ```
 
-### 8.9 `POST /uploads/blob`
+### 8.9 `POST /uploads/direct`
 
-`@vercel/blob` クライアントアップロードの「トークン発行窓口」（`handleUploadUrl`）。  
-認可は Cookie または `8.8` のトークン（リクエストの `clientPayload`）で行う。動画本体はここを通らない。
+1回限りの「署名付きアップロードURL」を発行する。認可は Cookie または `8.8` のトークン（`X-Upload-Token` ヘッダ）で行う。  
+動画本体はこのエンドポイントを通らず、ブラウザから `upload_url` へ直接 PUT される。
 
-- `type: "blob.generate-client-token"`: Blob クライアントトークンを返す
+#### Request
 
 ```json
 {
-  "type": "blob.generate-client-token",
-  "clientToken": "vercel_blob_client_<storeId>_..."
+  "content_type": "video/mp4"
 }
 ```
 
-> このエンドポイントは共通レスポンス（`data` ラップ）ではなく、`@vercel/blob` が要求する固定形状で返す点に注意。詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
+#### Response `200`
+
+```json
+{
+  "data": {
+    "upload_url": "https://<account>.r2.cloudflarestorage.com/<bucket>/<uuid>.mp4?X-Amz-Algorithm=...",
+    "public_url": "https://pub-xxxx.r2.dev/<uuid>.mp4",
+    "content_type": "video/mp4",
+    "expires_in": 1800
+  }
+}
+```
+
+- `upload_url` は 1 つのオブジェクトキー・1 つの Content-Type に固定されており、30分で失効する。ストレージの認証情報がブラウザに渡ることはない。
+- PUT 時の `Content-Type` は `content_type` と完全に一致させる必要がある（署名対象のため）。
+- ストレージ未設定の場合は `503`、MP4 / WebM 以外は `415` を返す。
+
+詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章。
 
 ---
 
@@ -800,7 +816,7 @@ GET     /api/v1/me/videos
 GET     /api/v1/videos/:id/stream
 
 POST    /api/v1/uploads/token        # 大容量アップロード用トークン発行
-POST    /api/v1/uploads/blob         # @vercel/blob クライアントトークン窓口
+POST    /api/v1/uploads/direct       # 署名付きアップロードURL発行
 
 GET     /api/v1/videos/:id/comments
 POST    /api/v1/videos/:id/comments

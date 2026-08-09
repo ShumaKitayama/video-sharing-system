@@ -71,7 +71,7 @@ export const endpoints = {
   // アップロード
   uploads: {
     token: `${V1}/uploads/token`,
-    blob: `${V1}/uploads/blob`,
+    direct: `${V1}/uploads/direct`,
   },
 
   // コメント

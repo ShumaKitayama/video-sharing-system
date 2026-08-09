@@ -13,43 +13,52 @@ import (
 	"github.com/google/uuid"
 
 	"video-sharing-system/server/internal/repository"
+	"video-sharing-system/server/internal/storage"
 	"video-sharing-system/server/internal/validation"
 )
 
 const (
-	blobUploadMaxBytes    = 500 * 1024 * 1024
-	blobClientTokenExpiry = time.Hour
+	remoteUploadMaxBytes = 500 * 1024 * 1024
+	// Long enough for a 500MB file on a slow classroom uplink, short enough that
+	// a leaked URL stops working quickly.
+	directUploadExpiry = 30 * time.Minute
 )
 
-var blobAllowedContentTypes = []string{"video/mp4", "video/webm"}
-
-// IssueBlobUploadToken returns a browser upload token for a direct-to-Blob upload.
-func (s *VideoService) IssueBlobUploadToken(pathname string) (string, error) {
-	return s.store.IssueBlobClientToken(pathname, blobAllowedContentTypes, blobUploadMaxBytes, blobClientTokenExpiry)
+// IssueDirectUpload reserves a pre-authorized slot in object storage so the
+// browser can send the video file straight there.
+func (s *VideoService) IssueDirectUpload(mime string) (storage.DirectUpload, error) {
+	return s.store.IssueDirectUpload(mime, directUploadExpiry)
 }
 
-// BlobEnabled reports whether direct Blob uploads are available.
-func (s *VideoService) BlobEnabled() bool {
-	return s.store.BlobEnabled()
+// RemoteStorageEnabled reports whether direct-to-bucket uploads are available.
+func (s *VideoService) RemoteStorageEnabled() bool {
+	return s.store.RemoteEnabled()
 }
 
-// RegisterBlobVideo creates a video record for a file the browser already
-// uploaded directly to Vercel Blob. No file bytes flow through the API here.
-func (s *VideoService) RegisterBlobVideo(ctx context.Context, uploaderID int64, title, description, blobURL, declaredMIME string, duration *int32) (VideoDTO, error) {
-	parsed, err := url.Parse(strings.TrimSpace(blobURL))
-	if err != nil || parsed.Scheme != "https" || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".blob.vercel-storage.com") {
+// RegisterRemoteVideo creates a video record for a file the browser already
+// uploaded straight to object storage. No file bytes flow through the API here.
+func (s *VideoService) RegisterRemoteVideo(ctx context.Context, uploaderID int64, title, description, fileURL, declaredMIME string, duration *int32) (VideoDTO, error) {
+	fileURL = strings.TrimSpace(fileURL)
+	if !s.store.AcceptsUploadedURL(fileURL) {
+		return VideoDTO{}, ErrInvalidBlobURL
+	}
+	parsed, err := url.Parse(fileURL)
+	if err != nil {
 		return VideoDTO{}, ErrInvalidBlobURL
 	}
 
 	// HEAD the object to confirm it exists and to read authoritative metadata.
-	size, headContentType, err := s.store.StatBlob(ctx, blobURL)
+	size, headContentType, err := s.store.StatRemote(ctx, fileURL)
 	if err != nil {
 		return VideoDTO{}, ErrInvalidBlobURL
 	}
 	if size <= 0 {
 		return VideoDTO{}, ErrInvalidBlobURL
 	}
-	if size > blobUploadMaxBytes {
+	if size > remoteUploadMaxBytes {
+		// A presigned URL cannot cap the upload size, so discard the oversized
+		// object instead of letting it sit in the bucket forever.
+		_ = s.store.Delete(fileURL)
 		return VideoDTO{}, ErrPayloadTooLarge
 	}
 
@@ -61,17 +70,20 @@ func (s *VideoService) RegisterBlobVideo(ctx context.Context, uploaderID int64, 
 		name = string([]rune(name)[:255])
 	}
 
-	// Prefer the blob's stored content type; fall back to the client hint.
+	// Prefer the content type the bucket actually stored; fall back to the hint
+	// the browser sent.
 	mime := strings.TrimSpace(strings.ToLower(headContentType))
 	if !validation.IsAllowedVideoMIME(mime) {
 		mime = strings.TrimSpace(strings.ToLower(declaredMIME))
 	}
 	if !validation.IsAllowedVideoMIME(mime) || !validation.FilenameMatchesMIME(name, mime) {
+		_ = s.store.Delete(fileURL)
 		return VideoDTO{}, ErrUnsupportedMedia
 	}
 
-	row, err := s.repo.Create(ctx, uploaderID, strings.TrimSpace(title), description, blobURL, name, mime, size, duration)
+	row, err := s.repo.Create(ctx, uploaderID, strings.TrimSpace(title), description, fileURL, name, mime, size, duration)
 	if err != nil {
+		_ = s.store.Delete(fileURL)
 		return VideoDTO{}, err
 	}
 

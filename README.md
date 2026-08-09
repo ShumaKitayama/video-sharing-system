@@ -108,10 +108,18 @@ docker compose up --build
 
 UIの改善に集中したい場合、フロントエンドだけをコンテナで起動し、バックエンドはVercel上の稼働中APIを利用できる。Node.jsやPostgreSQLのローカル準備は不要である。
 
+Windows（PowerShell）:
+
+```powershell
+.\front\docker-start-windows.cmd
+```
+
+macOS / Linux:
+
 ```bash
 cd front
-npm run docker:build   # 初回のみ
-npm run docker:dev
+docker build -f Dockerfile.dev -t video-front-dev .   # 初回のみ
+docker run --rm -it -p 5173:5173 -v "$(pwd):/app" -v /app/node_modules video-front-dev
 ```
 
 - 起動後、ブラウザで `http://localhost:5173` にアクセス。

@@ -169,18 +169,18 @@ service.UploadVideo
 JSONレスポンス
 ```
 
-### 6.1.1 動画アップロード（本番: ブラウザ → Blob 直接）
+### 6.1.1 動画アップロード（本番: ブラウザ → R2 直接）
 
 Vercel のボディ約4.5MB制限を回避するため、本番では動画本体を API に通さない。
 
 ```txt
 Browser
   ├─ POST /uploads/token   … 短命トークン取得（Cookie）
-  ├─ POST /uploads/blob    … Blob クライアントトークン取得
-  ├─ PUT  → Vercel Blob    … 動画本体を直接アップロード（API 非経由）
-  └─ POST /videos (JSON)   … blob_url を登録
+  ├─ POST /uploads/direct  … 署名付きアップロードURL取得
+  ├─ PUT  → Cloudflare R2  … 動画本体を直接アップロード（API 非経由）
+  └─ POST /videos (JSON)   … 公開URLを登録
         ↓ handler.UploadVideo（JSON 分岐）
-        service.RegisterBlobVideo（HEAD で実体確認 → repository.CreateVideo）
+        service.RegisterRemoteVideo（HEAD で実体確認 → repository.CreateVideo）
   ↓
 JSONレスポンス
 ```

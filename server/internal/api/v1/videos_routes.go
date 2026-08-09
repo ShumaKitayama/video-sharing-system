@@ -11,7 +11,7 @@ import (
 func registerVideoRoutes(g *gin.RouterGroup, cfg config.Config, deps api.Deps) {
 	g.GET("/videos", func(c *gin.Context) { handleVideosList(c, deps) })
 	g.POST("/uploads/token", middleware.RequireAuth(), func(c *gin.Context) { handleUploadTokenIssue(c, cfg, deps) })
-	g.POST("/uploads/blob", func(c *gin.Context) { handleBlobUpload(c, cfg, deps) })
+	g.POST("/uploads/direct", middleware.RequireAuthOrUploadToken(cfg.UploadTokenSecret, deps.Auth), func(c *gin.Context) { handleDirectUpload(c, deps) })
 	g.POST("/videos", middleware.RequireAuthOrUploadToken(cfg.UploadTokenSecret, deps.Auth), func(c *gin.Context) { handleVideosCreate(c, deps) })
 	g.GET("/videos/:id", func(c *gin.Context) { handleVideosGet(c, deps) })
 	g.GET("/videos/:id/stream", func(c *gin.Context) { handleVideosStream(c, deps) })

@@ -88,10 +88,10 @@ func handleVideosCreate(c *gin.Context, deps api.Deps) {
 		return
 	}
 
-	// JSON body = the browser already uploaded the file directly to Vercel Blob
-	// and is now registering it (see handleBlobUpload). No file bytes here.
+	// JSON body = the browser already uploaded the file straight to object
+	// storage and is now registering it (see handleDirectUpload). No file bytes here.
 	if strings.HasPrefix(strings.ToLower(c.ContentType()), "application/json") {
-		handleVideosCreateFromBlob(c, deps, uid)
+		handleVideosCreateFromStorage(c, deps, uid)
 		return
 	}
 
@@ -148,9 +148,9 @@ func handleVideosCreate(c *gin.Context, deps api.Deps) {
 	})
 }
 
-// handleVideosCreateFromBlob registers a video whose file already lives in
-// Vercel Blob (uploaded directly by the browser).
-func handleVideosCreateFromBlob(c *gin.Context, deps api.Deps, uid int64) {
+// handleVideosCreateFromStorage registers a video whose file already lives in
+// object storage (uploaded directly by the browser).
+func handleVideosCreateFromStorage(c *gin.Context, deps api.Deps, uid int64) {
 	var req struct {
 		BlobURL         string `json:"blob_url"`
 		Title           string `json:"title"`
@@ -180,7 +180,7 @@ func handleVideosCreateFromBlob(c *gin.Context, deps api.Deps, uid int64) {
 		return
 	}
 
-	video, err := deps.Videos.RegisterBlobVideo(c.Request.Context(), uid, req.Title, req.Description, req.BlobURL, req.ContentType, req.DurationSeconds)
+	video, err := deps.Videos.RegisterRemoteVideo(c.Request.Context(), uid, req.Title, req.Description, req.BlobURL, req.ContentType, req.DurationSeconds)
 	switch {
 	case errors.Is(err, service.ErrInvalidBlobURL):
 		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "アップロードに失敗しました。もう一度お試しください", []apperror.FieldDetail{

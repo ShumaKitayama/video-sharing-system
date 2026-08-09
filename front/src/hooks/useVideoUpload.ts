@@ -3,17 +3,19 @@
  * [保護] 動画アップロードを抽象化するカスタムフック
  *
  * 本番(Vercel) / Docker からリモート API に接続時:
- *   Vercel の関数/コンテナには「リクエストボディ約4.5MB」の上限があり、
+ *   リモート API には「リクエストボディ約4.5MB」の上限があり、
  *   動画本体を API へ POST すると 413 で弾かれる。そのため
- *   ブラウザから Vercel Blob へ「直接」アップロードし、
+ *   API から「署名付きアップロードURL」を1回だけ発行してもらい、
+ *   ブラウザからクラウドストレージ(Cloudflare R2)へ直接 PUT する。
  *   完了後に小さな JSON だけを API に送って DB 登録する。
  *
  * ローカル開発（ローカルの Go API に接続時）:
- *   Blob を使わず、従来どおり multipart で API に直接送る。
+ *   従来どおり multipart で API に直接送り、サーバーのディスクに保存する。
+ *
+ * 学生・UI 側は uploadVideo() を呼ぶだけでよい。
  * =================================================== */
 
 import { useState, useCallback } from "react";
-import { upload } from "@vercel/blob/client";
 import {
   API_BASE_URL,
   API_DIRECT_BASE_URL,
@@ -22,11 +24,15 @@ import {
 } from "../api/endpoints";
 
 /**
- * Vercel Blob への直接アップロード方式を使うか。
+ * ストレージへの直接アップロード方式を使うか。
  * 本番に加え、Docker からリモート API に繋いでいるときも有効にする
  * （リモート API はリクエストボディ約4.5MBの上限があるため）。
  */
-const USE_BLOB_UPLOAD = import.meta.env.PROD || USE_REMOTE_BACKEND;
+const USE_DIRECT_UPLOAD = import.meta.env.PROD || USE_REMOTE_BACKEND;
+
+/** 受け付ける動画形式と上限サイズ（サーバー側の制限と揃えている） */
+const ALLOWED_TYPES = ["video/mp4", "video/webm"];
+const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** ローカルファイルから再生時間（秒）を読み取る */
 function readVideoDurationSeconds(file: File): Promise<number | null> {
@@ -91,11 +97,97 @@ async function fetchUploadToken(): Promise<string> {
   return token as string;
 }
 
+/** API が発行する1回限りのアップロード枠 */
+interface DirectUploadSlot {
+  /** ここへ動画ファイルを1回だけ PUT する */
+  uploadUrl: string;
+  /** アップロード完了後にファイルが公開されるURL */
+  publicUrl: string;
+  /** PUT 時に必ずこの値を Content-Type に指定する（署名に含まれるため） */
+  contentType: string;
+}
+
+/** アップロード枠の発行を API に依頼する */
+async function requestDirectUploadSlot(
+  uploadToken: string,
+  contentType: string,
+): Promise<DirectUploadSlot> {
+  const res = await fetch(`${API_BASE_URL}${endpoints.uploads.direct}`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Upload-Token": uploadToken,
+    },
+    body: JSON.stringify({ content_type: contentType }),
+  });
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = body?.error?.message ?? "アップロードの準備に失敗しました";
+    throw new Error(msg);
+  }
+
+  const slot = body?.data;
+  if (!slot?.upload_url || !slot?.public_url) {
+    throw new Error("アップロードの準備に失敗しました");
+  }
+  return {
+    uploadUrl: slot.upload_url as string,
+    publicUrl: slot.public_url as string,
+    contentType: (slot.content_type as string) ?? contentType,
+  };
+}
+
+/**
+ * 署名付きURLへ動画ファイルを直接 PUT する（進捗付き XHR）。
+ * ストレージの認証情報はブラウザに一切渡らない。
+ */
+function putFileToStorage(
+  slot: DirectUploadSlot,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        // 100% は DB 登録が終わってから出したいので 99% で止めておく
+        onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      reject(new Error("動画の送信に失敗しました。通信環境を確認してください"));
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new Error("ネットワークエラーが発生しました"));
+    });
+
+    xhr.addEventListener("abort", () => {
+      reject(new Error("アップロードが中断されました"));
+    });
+
+    xhr.open("PUT", slot.uploadUrl);
+    // 署名した値と1文字でも違うとストレージ側で拒否される
+    xhr.setRequestHeader("Content-Type", slot.contentType);
+    // 別オリジンへの送信なので Cookie は付けない
+    xhr.withCredentials = false;
+    xhr.send(file);
+  });
+}
+
 /** DB に動画レコードを登録する（ファイル本体は送らない小さな JSON） */
 async function registerVideo(
   uploadToken: string,
   params: {
-    blobUrl: string;
+    fileUrl: string;
     title: string;
     description: string;
     contentType: string;
@@ -110,7 +202,7 @@ async function registerVideo(
       "X-Upload-Token": uploadToken,
     },
     body: JSON.stringify({
-      blob_url: params.blobUrl,
+      blob_url: params.fileUrl,
       title: params.title,
       description: params.description,
       content_type: params.contentType,
@@ -139,12 +231,11 @@ export function useVideoUpload(): UseVideoUploadResult {
       description: string,
     ): Promise<UploadedVideo | null> => {
       // クライアント側バリデーション
-      const allowedTypes = ["video/mp4", "video/webm"];
-      if (!allowedTypes.includes(file.type)) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
         setError("MP4またはWebM形式の動画ファイルを選択してください");
         return null;
       }
-      if (file.size > 500 * 1024 * 1024) {
+      if (file.size > MAX_FILE_BYTES) {
         setError("ファイルサイズは500MB以下にしてください");
         return null;
       }
@@ -162,27 +253,17 @@ export function useVideoUpload(): UseVideoUploadResult {
       setProgress(0);
 
       const durationSeconds = await readVideoDurationSeconds(file);
-      const ext = file.type === "video/webm" ? "webm" : "mp4";
 
       try {
         const uploadToken = await fetchUploadToken();
 
-        if (USE_BLOB_UPLOAD) {
-          // ブラウザ → Vercel Blob へ直接アップロード（大容量OK）
-          const pathname = `${crypto.randomUUID()}.${ext}`;
-          const blob = await upload(pathname, file, {
-            access: "public",
-            contentType: file.type,
-            multipart: true,
-            handleUploadUrl: `${API_BASE_URL}${endpoints.uploads.blob}`,
-            clientPayload: uploadToken,
-            onUploadProgress: (event) => {
-              setProgress(Math.min(99, Math.round(event.percentage)));
-            },
-          });
+        if (USE_DIRECT_UPLOAD) {
+          // ブラウザ → クラウドストレージへ直接アップロード（大容量OK）
+          const slot = await requestDirectUploadSlot(uploadToken, file.type);
+          await putFileToStorage(slot, file, setProgress);
 
           const created = await registerVideo(uploadToken, {
-            blobUrl: blob.url,
+            fileUrl: slot.publicUrl,
             title: title.trim(),
             description,
             contentType: file.type,
