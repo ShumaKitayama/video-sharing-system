@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,33 +19,92 @@ import (
 const copyBufferSize = 32 * 1024
 const maxVideoBytes = 500 * 1024 * 1024
 
+// remoteDeleteTimeout bounds best-effort cleanup calls to the bucket so a slow
+// provider can never stall a delete request.
+const remoteDeleteTimeout = 15 * time.Second
+
+// VideoStorage decides where a video file physically lives. Exactly one of
+// three backends is active:
+//
+//	Cloudflare R2   … set the R2_* variables (used on Vercel)
+//	local disk      … the default, used by classroom LAN and Docker runs
+//
+// Videos uploaded before the R2 migration still point at Vercel Blob; those
+// URLs stay readable and deletable through legacyBlobToken.
 type VideoStorage struct {
-	root      string
-	blobToken string
+	root            string
+	legacyBlobToken string
+	r2              *R2Client
 }
 
-func NewVideoStorage(root string, blobToken string) *VideoStorage {
-	return &VideoStorage{root: root, blobToken: blobToken}
+func NewVideoStorage(root string, legacyBlobToken string, r2 *R2Client) *VideoStorage {
+	return &VideoStorage{
+		root:            root,
+		legacyBlobToken: strings.TrimSpace(legacyBlobToken),
+		r2:              r2,
+	}
 }
 
 func (s *VideoStorage) Root() string {
 	return s.root
 }
 
-// BlobEnabled reports whether persistent Vercel Blob storage is configured.
-func (s *VideoStorage) BlobEnabled() bool {
-	return s.blobToken != ""
+// RemoteEnabled reports whether video files are stored in a cloud bucket
+// instead of on this machine's disk.
+func (s *VideoStorage) RemoteEnabled() bool {
+	return s.r2 != nil
 }
 
-// IssueBlobClientToken returns a short-lived token allowing the browser to
-// upload a single video object directly to Vercel Blob.
-func (s *VideoStorage) IssueBlobClientToken(pathname string, allowedContentTypes []string, maxBytes int64, validFor time.Duration) (string, error) {
-	return GenerateBlobClientToken(s.blobToken, pathname, allowedContentTypes, maxBytes, validFor)
+// DirectUpload is a one-shot, pre-authorized upload slot handed to the browser.
+type DirectUpload struct {
+	// UploadURL accepts a single HTTP PUT of the video file.
+	UploadURL string
+	// PublicURL is where the finished file will be readable from.
+	PublicURL string
+	// ContentType must be sent verbatim on the PUT; it is part of the signature.
+	ContentType string
+	// ExpiresInSeconds is how long UploadURL stays usable.
+	ExpiresInSeconds int
 }
 
-// StatBlob reads size and content type of an uploaded blob via HEAD.
-func (s *VideoStorage) StatBlob(ctx context.Context, blobURL string) (int64, string, error) {
-	return statBlob(ctx, blobURL)
+// IssueDirectUpload reserves a new object key and signs an upload URL for it.
+// The video file goes from the browser straight to the bucket, so it never
+// touches this server's memory or Vercel's request-body size limit.
+func (s *VideoStorage) IssueDirectUpload(mime string, validFor time.Duration) (DirectUpload, error) {
+	if s.r2 == nil {
+		return DirectUpload{}, errors.New("remote video storage is not configured")
+	}
+
+	ext := validation.ExtForMIME(mime)
+	if ext == "" {
+		return DirectUpload{}, fmt.Errorf("unsupported mime")
+	}
+
+	objectKey := uuid.NewString() + ext
+	uploadURL, err := s.r2.PresignPut(objectKey, mime, validFor)
+	if err != nil {
+		return DirectUpload{}, err
+	}
+
+	return DirectUpload{
+		UploadURL:        uploadURL,
+		PublicURL:        s.r2.PublicURL(objectKey),
+		ContentType:      mime,
+		ExpiresInSeconds: int(validFor.Seconds()),
+	}, nil
+}
+
+// AcceptsUploadedURL reports whether a URL sent by the browser really points at
+// the bucket this server hands out upload slots for. Without this check a
+// client could register any address on the internet as a video file.
+func (s *VideoStorage) AcceptsUploadedURL(rawURL string) bool {
+	return s.r2 != nil && s.r2.OwnsURL(rawURL)
+}
+
+// StatRemote reads the authoritative size and content type of an uploaded
+// object without downloading it.
+func (s *VideoStorage) StatRemote(ctx context.Context, objectURL string) (int64, string, error) {
+	return headObject(ctx, objectURL)
 }
 
 // AbsolutePath resolves a relative storage key under root.
@@ -55,7 +115,7 @@ func (s *VideoStorage) AbsolutePath(storageKey string) string {
 
 // PrepareWritableDir ensures root exists and is writable.
 func (s *VideoStorage) PrepareWritableDir(ctx context.Context) error {
-	if s.blobToken != "" {
+	if s.RemoteEnabled() {
 		return nil
 	}
 
@@ -168,20 +228,21 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 
 	key := filepath.ToSlash(filepath.Join(relDir, fileName))
 
-	if s.blobToken != "" {
-		blobFile, err := os.Open(tmpPath)
+	if s.r2 != nil {
+		// Forward the validated temp file to the bucket, streaming it so memory
+		// use stays flat regardless of video size.
+		uploaded, err := os.Open(tmpPath)
 		if err != nil {
 			_ = os.Remove(tmpPath)
 			return "", 0, err
 		}
-		// Vercel Blob REST API expects a flat pathname (e.g. uuid.mp4), not nested dirs.
-		blobURL, err := uploadToBlob(ctx, s.blobToken, fileName, mime, blobFile)
-		_ = blobFile.Close()
+		err = s.r2.PutObject(ctx, fileName, mime, uploaded, written)
+		_ = uploaded.Close()
 		_ = os.Remove(tmpPath)
 		if err != nil {
 			return "", 0, err
 		}
-		return blobURL, written, nil
+		return s.r2.PublicURL(fileName), written, nil
 	}
 
 	if err := os.Rename(tmpPath, fullPath); err != nil {
@@ -224,13 +285,10 @@ func sniffVideoMIME(header []byte) string {
 	return ""
 }
 
-// Delete removes an object by relative storage key or blob URL.
+// Delete removes an object by relative storage key or public URL.
 func (s *VideoStorage) Delete(storageKey string) error {
 	if strings.HasPrefix(storageKey, "https://") {
-		if s.blobToken == "" {
-			return nil
-		}
-		return deleteFromBlob(context.Background(), s.blobToken, storageKey)
+		return s.deleteRemote(storageKey)
 	}
 
 	path := s.AbsolutePath(storageKey)
@@ -243,4 +301,26 @@ func (s *VideoStorage) Delete(storageKey string) error {
 		return nil
 	}
 	return err
+}
+
+// deleteRemote routes a public URL back to the provider that stores it, so
+// videos from before the R2 migration are still cleaned up properly.
+func (s *VideoStorage) deleteRemote(objectURL string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), remoteDeleteTimeout)
+	defer cancel()
+
+	if key, ok := s.r2.ObjectKeyFromURL(objectURL); ok {
+		return s.r2.DeleteObject(ctx, key)
+	}
+
+	parsed, err := url.Parse(objectURL)
+	if err != nil {
+		return fmt.Errorf("invalid storage key")
+	}
+	if s.legacyBlobToken != "" && isLegacyBlobHost(parsed.Hostname()) {
+		return deleteFromBlob(ctx, s.legacyBlobToken, objectURL)
+	}
+
+	// Nothing here can remove the object; the database row is already gone.
+	return nil
 }

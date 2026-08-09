@@ -55,15 +55,15 @@ cd front
 ### 手順 2: イメージを作る（初回と、package.json を変えたときだけ）
 
 ```bash
-npm run docker:build
+docker build -f Dockerfile.dev -t video-front-dev .
 ```
 
-初回は 1〜3 分ほどかかる。`naming to docker.io/library/video-front-dev` のような行が出れば成功である。
+初回は 1〜3 分ほどかかる。`Successfully tagged video-front-dev:latest` のような行が出れば成功である。
 
 ### 手順 3: 起動する
 
 ```bash
-npm run docker:dev
+docker run --rm -it -p 5173:5173 -v "$(pwd):/app" -v /app/node_modules video-front-dev
 ```
 
 次のような表示が出れば起動成功である。
@@ -100,12 +100,21 @@ npm run docker:dev
 
 ## 5. Windows（PowerShell）で使う場合
 
-`npm run docker:dev` は macOS / Linux 用の書き方なので、Windows では次のコマンドを直接実行する。
+Windows では長い `docker run` コマンドを手入力しない。`front` フォルダで次の専用スクリプトを実行する。
 
 ```powershell
-docker build -f Dockerfile.dev -t video-front-dev .
-docker run --rm -it -p 5173:5173 -v "${PWD}:/app" -v /app/node_modules video-front-dev
+.\docker-start-windows.cmd
 ```
+
+このスクリプトは次を自動で行う。
+
+- スクリプト自身がある `front` フォルダへ移動
+- Docker Desktop の起動確認
+- Docker イメージのビルド
+- `--mount` を使った Windows パスの安全な接続
+- フロントエンドの起動
+
+そのため、ホスト側に Node.js や npm は不要であり、PowerShell 固有の `$PWD` も使わない。フォルダ名に空白が含まれていても動作する。
 
 ---
 
@@ -116,7 +125,7 @@ docker run --rm -it -p 5173:5173 -v "${PWD}:/app" -v /app/node_modules video-fro
 ```bash
 docker run --rm -it -p 5173:5173 \
   -e VITE_REMOTE_BACKEND_URL=https://別のサーバー.example.com \
-  -v "$PWD":/app -v /app/node_modules video-front-dev
+  -v "$(pwd):/app" -v /app/node_modules video-front-dev
 ```
 
 ---
@@ -164,7 +173,7 @@ cd front && npm run dev
 | `port is already allocated` | 5173 番ポートを他のプロセスが使っている。すでに `npm run dev` が動いていないか確認して止める |
 | ブラウザが真っ白 | `localhost:5173` ではなく `172.x.x.x:5173` を開いていないか確認する |
 | 保存しても画面が変わらない | `front/src/` の外を編集していないか確認する。設定ファイルを変えた場合は再ビルドが必要 |
-| ログインしてもすぐログアウトされる | `Ctrl + C` で止めてから `npm run docker:build` をやり直す（proxy 設定が古い可能性がある） |
+| ログインしてもすぐログアウトされる | `Ctrl + C` で止めてから `docker build -f Dockerfile.dev -t video-front-dev .` をやり直す（proxy 設定が古い可能性がある） |
 | 動画のアップロードが失敗する | ログインしているか確認する。ファイルは MP4 / WebM、500MB 以下である必要がある |
 
 ### 応急処置: ビルドが固まって進まないとき
@@ -174,6 +183,5 @@ Docker Desktop を再起動しても直らない場合、ログイン情報を�
 ```bash
 mkdir -p /tmp/docker-nocreds && echo '{}' > /tmp/docker-nocreds/config.json
 DOCKER_CONFIG=/tmp/docker-nocreds docker build -f Dockerfile.dev -t video-front-dev .
+docker run --rm -it -p 5173:5173 -v "$(pwd):/app" -v /app/node_modules video-front-dev
 ```
-
-`npm run docker:dev` はそのまま使える（起動時はイメージの取得が不要なため）。

@@ -25,10 +25,10 @@ interface VideoCardProps {
 // -------------------------------------------------------
 function formatDuration(seconds: number | null | undefined): string | null {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
-  const m = /* ★ 何分かを計算しよう (Math.floor を使う) */ 0;
-  const s = /* ★ 何秒かを計算しよう (Math.floor を使う) */ 0;
-  // ★ `${m}:${s}` の形式で返そう。秒は必ず2桁にすること (padStart)
-  return "";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  // 秒は必ず2桁にする（"1:5" ではなく "1:05" と表示するため）
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // -------------------------------------------------------
@@ -38,8 +38,8 @@ function formatDuration(seconds: number | null | undefined): string | null {
 //   それ以外   → そのまま数字を文字列で返す
 // -------------------------------------------------------
 function formatViewCount(count: number): string {
-  if (count >= 10000) return /* ★ 「〇.〇万」の形式で返そう */ "";
-  if (count >= 1000)  return /* ★ 「〇.〇千」の形式で返そう */ "";
+  if (count >= 10000) return `${(count / 10000).toFixed(1)}万`;
+  if (count >= 1000)  return `${(count / 1000).toFixed(1)}千`;
   return `${count}`;
 }
 
@@ -52,7 +52,7 @@ function formatTimeAgo(dateStr: string): string {
   const minutes = Math.floor(diff / 60000);
   if (minutes < 60) return `${minutes}分前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return /* ★ 「〇時間前」の形式で返そう */ "";
+  if (hours < 24) return `${hours}時間前`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}日前`;
   const months = Math.floor(days / 30);

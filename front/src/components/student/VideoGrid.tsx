@@ -11,6 +11,9 @@ import VideoCard from "./VideoCard";
 interface VideoGridProps {
   videos: Video[];   // 表示する動画の配列
   loading?: boolean; // 読み込み中かどうか（? = 省略可能）
+  canDelete?: boolean; // 各カードに削除ボタンを表示するかどうか
+  deleting?: boolean;  // 削除処理中かどうか（ボタンを無効化する）
+  onDelete?: (videoId: string) => void; // 削除ボタンを押したときの処理
 }
 
 // -------------------------------------------------------
@@ -37,7 +40,13 @@ function SkeletonCard() {
 // VideoGrid: メインコンポーネント
 //   loading / 空 / 通常 の3パターンで表示を切り替える
 // -------------------------------------------------------
-export default function VideoGrid({ videos, loading }: VideoGridProps) {
+export default function VideoGrid({
+  videos,
+  loading,
+  canDelete,
+  deleting,
+  onDelete,
+}: VideoGridProps) {
 
   // ① 読み込み中：スケルトンカードを 8 枚並べる
   if (loading) {
@@ -70,7 +79,13 @@ export default function VideoGrid({ videos, loading }: VideoGridProps) {
       {/* videos 配列の各要素 (video) に対して VideoCard を1枚ずつ生成する */}
       {videos.map((video) => (
         // key には一意の ID を使う（index より安定しているため）
-        <VideoCard key={video.id} video={video} />
+        <VideoCard
+          key={video.id}
+          video={video}
+          canDelete={canDelete}
+          deleting={deleting}
+          onDelete={onDelete}
+        />
       ))}
     </div>
   );

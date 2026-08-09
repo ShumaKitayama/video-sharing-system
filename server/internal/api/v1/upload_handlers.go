@@ -10,6 +10,7 @@ import (
 	"video-sharing-system/server/internal/config"
 	"video-sharing-system/server/internal/handlerutil"
 	"video-sharing-system/server/internal/middleware"
+	"video-sharing-system/server/internal/validation"
 )
 
 // handleUploadTokenIssue returns a short-lived token used to authorize the
@@ -37,69 +38,41 @@ func handleUploadTokenIssue(c *gin.Context, cfg config.Config, deps api.Deps) {
 	})
 }
 
-// blobUploadEvent is the request body sent by @vercel/blob's browser `upload()`
-// helper to its `handleUploadUrl` (this endpoint).
-type blobUploadEvent struct {
-	Type    string `json:"type"`
-	Payload struct {
-		Pathname      string `json:"pathname"`
-		ClientPayload string `json:"clientPayload"`
-		Multipart     bool   `json:"multipart"`
-	} `json:"payload"`
-}
-
-// handleBlobUpload speaks the @vercel/blob client-upload protocol so the browser
-// can upload video files straight to Vercel Blob (avoiding Vercel's request-body
-// size limit on our API). It only mints upload tokens; the file never passes
-// through this handler.
-func handleBlobUpload(c *gin.Context, cfg config.Config, deps api.Deps) {
-	var body blobUploadEvent
-	if err := c.ShouldBindJSON(&body); err != nil {
-		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", nil)
+// handleDirectUpload hands the browser a single pre-authorized URL it can PUT
+// the video file to. The file goes straight to object storage, which keeps it
+// clear of the roughly 4.5MB request-body limit this API runs under on Vercel.
+// No storage credentials are ever exposed: the URL works once, for one object
+// key, for one content type, and only until it expires.
+func handleDirectUpload(c *gin.Context, deps api.Deps) {
+	var req struct {
+		ContentType string `json:"content_type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "入力内容を確認してください", []apperror.FieldDetail{
+			{Field: "body", Message: "JSON形式で送信してください"},
+		})
 		return
 	}
 
-	switch body.Type {
-	case "blob.generate-client-token":
-		if !authorizeBlobUpload(c, cfg, deps, body.Payload.ClientPayload) {
-			handlerutil.Error(c, http.StatusUnauthorized, apperror.Unauthenticated, "ログインが必要です", nil)
-			return
-		}
-		if !deps.Videos.BlobEnabled() {
-			handlerutil.Error(c, http.StatusServiceUnavailable, apperror.InternalError, "ストレージが未設定です", nil)
-			return
-		}
-
-		token, err := deps.Videos.IssueBlobUploadToken(body.Payload.Pathname)
-		if err != nil {
-			handlerutil.Error(c, http.StatusInternalServerError, apperror.InternalError, "サーバーで問題が発生しました", nil)
-			return
-		}
-		// The Blob client expects this exact (unwrapped) shape.
-		c.JSON(http.StatusOK, gin.H{
-			"type":        body.Type,
-			"clientToken": token,
-		})
-
-	case "blob.upload-completed":
-		// We register uploads from the browser instead of relying on this
-		// server-to-server callback, so simply acknowledge it.
-		c.JSON(http.StatusOK, gin.H{"type": body.Type, "response": "ok"})
-
-	default:
-		handlerutil.Error(c, http.StatusBadRequest, apperror.ValidationError, "不明なイベントです", nil)
+	if !validation.IsAllowedVideoMIME(req.ContentType) {
+		handlerutil.Error(c, http.StatusUnsupportedMediaType, apperror.UnsupportedMediaType, "MP4またはWebM形式の動画を選んでください", nil)
+		return
 	}
-}
+	if !deps.Videos.RemoteStorageEnabled() {
+		handlerutil.Error(c, http.StatusServiceUnavailable, apperror.InternalError, "動画の保存先が設定されていません", nil)
+		return
+	}
 
-// authorizeBlobUpload accepts either a valid session cookie (populated by the
-// global Auth middleware) or a valid upload token passed as the clientPayload.
-func authorizeBlobUpload(c *gin.Context, cfg config.Config, deps api.Deps, clientPayload string) bool {
-	if _, ok := middleware.UserID(c); ok {
-		return true
+	slot, err := deps.Videos.IssueDirectUpload(req.ContentType)
+	if err != nil {
+		handlerutil.Error(c, http.StatusInternalServerError, apperror.InternalError, "サーバーで問題が発生しました", nil)
+		return
 	}
-	if clientPayload == "" {
-		return false
-	}
-	_, _, err := deps.Auth.ResolveUploadToken(clientPayload, cfg.UploadTokenSecret)
-	return err == nil
+
+	handlerutil.Data(c, http.StatusOK, gin.H{
+		"upload_url":   slot.UploadURL,
+		"public_url":   slot.PublicURL,
+		"content_type": slot.ContentType,
+		"expires_in":   slot.ExpiresInSeconds,
+	})
 }

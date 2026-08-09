@@ -33,7 +33,24 @@ func main() {
 		log.Fatalf("migrations: %v", err)
 	}
 
-	store := storage.NewVideoStorage(cfg.UploadDir, cfg.BlobReadWriteToken)
+	// nil means "no R2 settings present", which keeps videos on local disk.
+	r2Client, err := storage.NewR2Client(storage.R2Config{
+		AccountID:       cfg.R2AccountID,
+		AccessKeyID:     cfg.R2AccessKeyID,
+		SecretAccessKey: cfg.R2SecretAccessKey,
+		Bucket:          cfg.R2Bucket,
+		PublicBaseURL:   cfg.R2PublicBaseURL,
+	})
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+	if r2Client != nil {
+		log.Printf("video storage: Cloudflare R2 bucket %q", cfg.R2Bucket)
+	} else {
+		log.Printf("video storage: local disk %q", cfg.UploadDir)
+	}
+
+	store := storage.NewVideoStorage(cfg.UploadDir, cfg.BlobReadWriteToken, r2Client)
 
 	userRepo := repository.NewUserRepository(pool)
 	sessRepo := repository.NewSessionRepository(pool)
