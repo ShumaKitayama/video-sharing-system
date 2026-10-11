@@ -6,9 +6,9 @@
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useVideos } from "../hooks/useVideos";
-import ChannelAvatar from "../components/student/ChannelAvatar";
 import VideoPreview from "../components/internal/VideoPreview";
-import { formatDuration, formatViewCount, formatTimeAgo } from "../components/student/VideoCard";
+import { ChannelAvatar } from "../components/internal/StudentSlots";
+import { formatDuration, formatViewCount, formatTimeAgo } from "../components/internal/studentFormatters";
 import type { Video } from "../types";
 
 interface SearchResultItemProps {

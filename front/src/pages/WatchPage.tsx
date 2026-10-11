@@ -13,9 +13,8 @@ import { useLike } from "../hooks/useLike";
 import { useAuth } from "../hooks/useAuth";
 import { useVideoDelete } from "../hooks/useVideoDelete";
 import VideoPlayer from "../components/internal/VideoPlayer";
-import ChannelAvatar from "../components/student/ChannelAvatar";
-import CommentItem from "../components/student/CommentItem";
-import { formatViewCount, formatTimeAgo } from "../components/student/VideoCard";
+import { ChannelAvatar, CommentItem } from "../components/internal/StudentSlots";
+import { formatViewCount, formatTimeAgo } from "../components/internal/studentFormatters";
 
 export default function WatchPage() {
   const { id } = useParams<{ id: string }>();

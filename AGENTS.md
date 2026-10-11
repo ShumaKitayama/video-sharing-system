@@ -12,14 +12,15 @@ The primary objective of this project is **NOT** to construct a production-grade
 - Local network streaming systems
 - Client/server architecture interaction
 
-The entire ecosystem is optimized and designed to run exclusively within a restricted local area network (LAN) classroom environment.
+The ecosystem is scoped to a single classroom. It is delivered from the project's own Vercel deployment so that hands-on sessions need **nothing installed on student machines** (Windows + Chrome only): students open `/lab` in the browser, edit the student layer through fill-in-the-blank steps or a free editor, and see the result in a live preview of the real site. Native local execution (`npm run dev`, `go run`, Docker) remains supported for teachers and developers.
 
 ## Main Technology Stack
 
 - **Frontend:** React (v18+) + TypeScript + Vite
 - **Backend:** Go + Gin Framework
 - **Database:** PostgreSQL
-- **Infrastructure:** Docker Compose
+- **Infrastructure:** Docker Compose (local), Vercel (classroom delivery: static frontend + Go API, Neon, Vercel Blob)
+- **Browser Lab:** Sucrase (in-browser TSX → JS), CodeMirror 6 (free editor) — loaded only on `/lab`
 
 ---
 
@@ -29,7 +30,7 @@ AI agents modifying this repository must stringently adhere to the following cor
 
 1. **Educational Clarity:** Code must remain simple, flat, and transparent. Avoid deep inheritance, over-generalized abstractions, or advanced metaprogramming that a beginner cannot easily parse.
 2. **Safe Editing Experience:** Structural mechanics (networking, file system access, authentication) must be strictly isolated from visual layers so students can freely modify the UI without bricking the core system.
-3. **Local-First Architecture:** Network timeouts, asset loading, and server configurations must be tailored for local LAN environments without reliance on external cloud services.
+3. **Zero-Install Classroom:** A student needs only Chrome and a URL. Never add steps that require installing tools, copying files, or configuring student machines. Do not add third-party services or CDNs at runtime beyond the project's own Vercel deployment; keep everything bundled.
 4. **Stable Classroom Operation:** Memory footprint, file handling, and concurrency models must be rock-solid. Do not introduce any code that could cause panic loops or Out-of-Memory (OOM) failures under concurrent student access.
 5. **Proactive Protection:** AI agents must actively reject user or script requests that violate the architectural boundaries outlined below.
 
@@ -41,8 +42,9 @@ AI agents modifying this repository must stringently adhere to the following cor
 
 Students are permitted to modify visual components, CSS/styling, static text, layouts, and minor UI logic. They must **NEVER** encounter or be forced to modify low-level infrastructure.
 
-- **Editable by Students:** `src/components/student/`, `src/styles/`
-- **Protected from Students:** Everything else, including API callers, routers, state management engines, and backend logic.
+- **Editable by Students:** `front/src/components/student/`, `front/src/styles/` (in class, edited through `/lab` in the browser — the files themselves are not modified)
+- **Editable by Teachers:** `front/src/lab/lessons/steps.ts` (lesson data only)
+- **Protected from Students:** Everything else, including API callers, routers, state management engines, the Lab runtime, and backend logic.
 
 ## 2. Mandatory API Abstraction
 
@@ -73,22 +75,37 @@ The infrastructure must seamlessly support two parallel execution methodologies 
 
 Do not introduce configuration mechanisms that break native local execution (e.g., rigid hardcoded internal Docker DNS routes without environment variable fallback loops).
 
+The browser Lab (`/lab`) is served by the same frontend build and must keep working in all modes; it adds no extra server.
+
+## 5. Browser Lab Boundaries
+
+Student code from `/lab` is compiled **in the student's own browser** and only swaps the student layer inside a same-origin preview iframe.
+
+- Pages must use student components through `components/internal/StudentSlots.tsx` and `components/internal/studentFormatters.ts`, never by importing `components/student/` directly. The slots wrap every student component in an error boundary that falls back to the built-in component.
+- Student modules may only import what `lab/runtime/moduleLoader.ts` (`hostModules`) exposes. Add to that allow-list deliberately; never expose `services/`, `hooks/` internals, `fetch`, or storage helpers.
+- `lab/runtime/compileStudent.ts` rejects `fetch` / `XMLHttpRequest` / `axios` / `eval` in student code, mirroring Rule 2.
+- Keep the Lab heavy dependencies (Sucrase, CodeMirror) behind dynamic imports so the normal site bundle does not grow.
+- Student code is saved only in that browser's `localStorage`. Do not add endpoints that store or execute student code on the server.
+- Lesson `find` strings must match the real files exactly; when you change a file in `components/student/` or `styles/index.css`, update `lab/lessons/steps.ts` accordingly.
+
 ---
 
 # Concrete Directory Architecture & Enforcements
 
 ```txt
 .
-├── frontend/
+├── front/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── student/       <-- [EDITABLE] Only presentation layers, colors, layout variations
-│   │   │   └── internal/      <-- [PROTECTED] Player engines, network fallback triggers, UI scaffolding
+│   │   │   └── internal/      <-- [PROTECTED] Player engines, UI scaffolding, StudentSlots (student swap points)
 │   │   ├── pages/             <-- Routing views, structural layout assemblies
 │   │   ├── services/          <-- [PROTECTED] Clean API client bindings, concrete HTTP implementations
 │   │   ├── hooks/             <-- [PROTECTED] Reusable state bridges and operational abstraction wrappers
 │   │   ├── api/               <-- [PROTECTED] Core endpoints, configurations, Axios/Fetch instances
 │   │   ├── styles/            <-- [EDITABLE] Tailwind config, CSS entry points, standard variables
+│   │   ├── lab/               <-- [PROTECTED] Browser Lab (/lab): runtime/, components/, labState.ts
+│   │   │   └── lessons/       <-- [TEACHER-EDITABLE] steps.ts (fill-in-the-blank lesson data)
 │   │   └── types/             <-- System-wide data contracts
 │   └── package.json
 └── server/
@@ -123,7 +140,7 @@ Do not introduce configuration mechanisms that break native local execution (e.g
 # AI Agent Automation Directives
 
 When modifying this repository, you must execute inside these guardrails:
-1. **Deny Feature Creep:** If asked to add intricate enterprise layers (e.g., JWT rotation systems, AWS S3 storage bridges, complex microservices), remind the user that this system is tailored for a local classroom LAN, and preserve monolithic simplicity.
+1. **Deny Feature Creep:** If asked to add intricate enterprise layers (e.g., JWT rotation systems, AWS S3 storage bridges, complex microservices), remind the user that this system is tailored for a single classroom, and preserve monolithic simplicity.
 2. **Explainability Metric:** Any code refactoring or function addition you execute must be structure-clean enough to be explained to a high-school or junior-high-school student during a code walkthrough.
 3. **Preserve Boundaries:** If a modification request would inadvertently break the segregation of `student` and `internal` subdirectories, restructure the implementation to guarantee that structural code stays within the protected layer.
 ```

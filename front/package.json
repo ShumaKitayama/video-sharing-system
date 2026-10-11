@@ -17,10 +17,14 @@
     "vercel:deploy:prod": "vercel deploy --prod"
   },
   "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-javascript": "^6.2.5",
     "@vercel/blob": "^2.5.0",
+    "codemirror": "^6.0.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.15.1"
+    "react-router-dom": "^7.15.1",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
