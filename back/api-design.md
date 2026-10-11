@@ -182,7 +182,7 @@ APIは、フロントエンドが安全に使える「決まった窓口」を�
 | title | 1〜80文字 |
 | description | 0〜1000文字 |
 | comment body | 1〜300文字 |
-| video file size | 500MB以下 |
+| video file size | 30MB以下 |
 | video MIME | `video/mp4`, `video/webm` |
 
 ### 4.5 リクエストID
@@ -477,7 +477,7 @@ DB接続、保存ディレクトリの書き込み可否など、実処理に必
 サーバー側の検証:
 
 1. `blob_url` のホストが `*.blob.vercel-storage.com` であること
-2. HEAD で実体を確認し、サイズ（500MB以下）と MIME（MP4/WebM）が妥当であること
+2. HEAD で実体を確認し、サイズ（30MB以下）と MIME（MP4/WebM）が妥当であること
 
 事前フローの詳細は [`deployment-and-storage.md`](./deployment-and-storage.md) 第4章を参照。
 

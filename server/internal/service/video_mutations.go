@@ -13,11 +13,12 @@ import (
 	"github.com/google/uuid"
 
 	"video-sharing-system/server/internal/repository"
+	"video-sharing-system/server/internal/storage"
 	"video-sharing-system/server/internal/validation"
 )
 
 const (
-	blobUploadMaxBytes    = 500 * 1024 * 1024
+	blobUploadMaxBytes    = storage.MaxVideoBytes
 	blobClientTokenExpiry = time.Hour
 )
 

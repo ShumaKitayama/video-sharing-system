@@ -28,6 +28,12 @@ import {
  */
 const USE_BLOB_UPLOAD = import.meta.env.PROD || USE_REMOTE_BACKEND;
 
+/**
+ * アップロードできる動画の最大サイズ（MB）。サーバー側 storage.MaxVideoBytes と同じ値にする。
+ * Vercel Blob の無料枠（容量1GB・転送10GB/月）をクラス全員で分け合うため小さめにしている。
+ */
+export const MAX_VIDEO_MB = 30;
+
 /** ローカルファイルから再生時間（秒）を読み取る */
 function readVideoDurationSeconds(file: File): Promise<number | null> {
   return new Promise((resolve) => {
@@ -144,8 +150,8 @@ export function useVideoUpload(): UseVideoUploadResult {
         setError("MP4またはWebM形式の動画ファイルを選択してください");
         return null;
       }
-      if (file.size > 500 * 1024 * 1024) {
-        setError("ファイルサイズは500MB以下にしてください");
+      if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+        setError(`ファイルサイズは${MAX_VIDEO_MB}MB以下にしてください（10〜15秒くらいの動画がおすすめ）`);
         return null;
       }
       if (!title.trim() || title.length > 80) {

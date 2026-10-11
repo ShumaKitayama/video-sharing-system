@@ -307,7 +307,7 @@ const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
 | 403 | `FORBIDDEN` | 「権限がありません」と表示 |
 | 404 | `NOT_FOUND` | 「見つかりません」、一覧へ戻す |
 | 409 | `CONFLICT` | 「すでに存在します」など |
-| 413 | `PAYLOAD_TOO_LARGE` | 「ファイルが大きすぎます」（上限 500MB） |
+| 413 | `PAYLOAD_TOO_LARGE` | 「ファイルが大きすぎます」（上限 30MB） |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | 「MP4 または WebM のみ」 |
 | 429 | `RATE_LIMITED` | 「しばらく待ってから再試行」 |
 | 500 | `INTERNAL_ERROR` | 汎用エラーメッセージ |
@@ -648,7 +648,7 @@ Content-Type: multipart/form-data
 
 - MIME: `video/mp4`, `video/webm`
 - 拡張子: `.mp4`, `.webm`（MIME と一致必須）
-- 最大サイズ: **500MB**
+- 最大サイズ: **30MB**（Vercel Blob 無料枠をクラスで分け合うため。`storage.MaxVideoBytes`）
 - レート制限: ユーザーあたり 1 分 5 回
 
 ### 成功 `201`

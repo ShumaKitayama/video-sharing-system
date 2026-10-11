@@ -170,7 +170,7 @@ storage_key が "https://..." で始まる  → 307 Temporary Redirect（Blob �
 サーバーは受け取った `blob_url` をそのまま信用せず、次を検証する。
 
 1. ホスト名が `*.blob.vercel-storage.com` であること
-2. HEAD リクエストで実体が存在し、サイズ・Content-Type が妥当であること（500MB 以下、MP4 / WebM）
+2. HEAD リクエストで実体が存在し、サイズ・Content-Type が妥当であること（30MB 以下、MP4 / WebM）
 
 ### 4.3 アップロードトークン（HMAC）
 
@@ -276,6 +276,46 @@ npx vercel@latest --prod
 cd ../front
 npx vercel@latest --prod
 ```
+
+### 6.1 プロジェクトを一から作り直すとき
+
+プロジェクトが削除された場合などは、次の順で復旧する（2026-10 に実施した手順）。
+**Framework Preset の設定を忘れると、API はビルドが一瞬で終わり全パスが 404 になる**ので注意する。
+
+```bash
+# 1. API プロジェクトを作成してリンク
+cd server
+npx vercel@latest project create video-sharing-api
+npx vercel@latest link --yes --project video-sharing-api
+
+# 2. Framework Preset を Container にする（Dockerfile.vercel を使わせるために必須）
+npx vercel@latest api /v9/projects/video-sharing-api -X PATCH -F framework=container
+
+# 3. Blob ストアを接続（Go は静的トークン BLOB_READ_WRITE_TOKEN を読むので token 方式）
+npx vercel@latest storage connect <store_id> --auth token --add-rw-token -e production -e preview --yes
+
+# 4. Neon を作成して接続（DATABASE_URL などが自動で入る。プラン ID は free_v3）
+npx vercel@latest integration add neon --plan free_v3 -n video-sharing-db -e production -e preview --no-env-pull
+
+# 5. アップロードトークンの署名鍵（ランダム値）
+openssl rand -hex 32 | npx vercel@latest env add UPLOAD_TOKEN_SECRET production --sensitive
+
+# 5'. フロントのオリジンを許可（未設定だと localhost しか許可されず、登録・ログインなどの POST が本文なしの 403 になる）
+printf '%s' "https://video-sharing-front.vercel.app" | npx vercel@latest env add CORS_ORIGINS production
+
+# 6. デプロイ（マイグレーションは起動時に自動実行）
+npx vercel@latest deploy --prod
+
+# 7. フロントも同様（Framework Preset は vite）
+cd ../front
+npx vercel@latest project create video-sharing-front
+npx vercel@latest link --yes --project video-sharing-front
+npx vercel@latest api /v9/projects/video-sharing-front -X PATCH -F framework=vite
+npx vercel@latest deploy --prod
+```
+
+- `integration add neon` は `server/` に AI 向けの解説ファイル（`.agents/`, `.claude/`, `skills-lock.json`）を追加することがある。不要なので削除してよい。
+- 新しい DB は空なので、アカウントは `/register` から作り直す。
 
 ### 動作確認（本番）
 

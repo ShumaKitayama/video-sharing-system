@@ -16,7 +16,11 @@ import (
 )
 
 const copyBufferSize = 32 * 1024
-const maxVideoBytes = 500 * 1024 * 1024
+
+// MaxVideoBytes is the largest video a student can upload (30MB).
+// It is kept small on purpose: the Vercel Blob free plan allows 1GB of
+// storage and 10GB of downloads per month for the whole class.
+const MaxVideoBytes = 30 * 1024 * 1024
 
 type VideoStorage struct {
 	root      string
@@ -120,7 +124,7 @@ func (s *VideoStorage) SaveUploadedVideo(ctx context.Context, src io.Reader, mim
 		_ = os.Remove(tmpPath)
 		return "", 0, cerr
 	}
-	if written > maxVideoBytes {
+	if written > MaxVideoBytes {
 		_ = os.Remove(tmpPath)
 		return "", 0, fmt.Errorf("payload too large")
 	}

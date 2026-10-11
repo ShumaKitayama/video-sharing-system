@@ -4,7 +4,7 @@
  * =================================================== */
 
 import { useState, useRef } from "react";
-import { useVideoUpload } from "../../hooks/useVideoUpload";
+import { MAX_VIDEO_MB, useVideoUpload } from "../../hooks/useVideoUpload";
 
 interface UploadModalProps {
   onClose: () => void;
@@ -65,7 +65,7 @@ export default function UploadModal({ onClose }: UploadModalProps) {
               >
                 <div className="upload-drop__icon">📤</div>
                 <div className="upload-drop__text">ファイルをドラッグ＆ドロップ</div>
-                <div className="upload-drop__sub">またはクリックしてファイルを選択（MP4, WebM / 500MB以下）</div>
+                <div className="upload-drop__sub">またはクリックしてファイルを選択（MP4, WebM / {MAX_VIDEO_MB}MB以下・10〜15秒くらい）</div>
               </div>
               <input
                 ref={inputRef}
