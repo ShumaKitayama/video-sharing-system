@@ -4,7 +4,7 @@
  * =================================================== */
 
 import { useVideos } from "../hooks/useVideos";
-import VideoGrid from "../components/student/VideoGrid";
+import { VideoGrid } from "../components/internal/StudentSlots";
 
 export default function HomePage() {
   const { videos, loading } = useVideos({ sort: "latest" });

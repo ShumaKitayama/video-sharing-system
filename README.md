@@ -2,7 +2,11 @@
 
 # Video Sharing System
 
-中学生向けのローカルLAN型 動画投稿サイト学習システム。
+中学生向けの動画投稿サイト学習システム。
+
+> **体験会はブラウザだけで実施できる。** 生徒は Chrome で `https://<フロントのURL>/lab` を開くだけで、
+> 穴埋め形式のステップ → 自由改造 → 動画投稿までを体験できる（端末へのインストール・ファイル配布は不要）。
+> 手順は [`front/体験会手順.md`](./front/体験会手順.md)。
 
 本プロジェクトは、React、Go、PostgreSQLを組み合わせて、普段何気なく利用している「動画投稿サイトの裏側」を実践的かつ安全に学ぶために設計された教育用システムである。
 
@@ -45,6 +49,19 @@
                                                         [ PostgreSQL ]
 ```
 
+> **体験会（ブラウザ Lab）構成**: 生徒は `/lab` を開く。左のステップ／エディタで書いたコードは、ブラウザの中で
+> TypeScript → JavaScript に変換（Sucrase）され、右の iframe に表示される本物のサイトの `components/student/` 部品と
+> `styles/index.css` だけを差し替える。通信は従来どおり hooks / services 経由で Vercel の API に届く。
+> 生徒のコードは各端末の localStorage にだけ保存され、サーバーには送られない。仕組みは [`front/src/lab/README.md`](./front/src/lab/README.md)。
+
+```txt
+[ 生徒の Chrome ]
+  /lab ── 左: ステップ・エディタ ──(コード)──▶ 右: iframe（本物のサイト + 生徒の部品）
+                                                        │ hooks / services
+                                                        ▼
+                                 [ Vercel: フロント配信 + Go API ] ── [ Neon(PostgreSQL) / Vercel Blob ]
+```
+
 > **本番（Vercel）構成**: フロントとバックエンドを Vercel の別プロジェクトとして配置し、フロントの rewrite で同一オリジン化する。動画実体はローカルディスクではなく **Vercel Blob** に保存し、大容量アップロードはブラウザから Blob へ直接送る（Vercel のボディ 4.5MB 制限を回避）。詳細は [`back/deployment-and-storage.md`](./back/deployment-and-storage.md)。
 
 ---
@@ -57,29 +74,39 @@
 
 学生が自由にデザイン、テキスト、レイアウトを変更し、見た目の変化を楽しめるエリア。
 
-- `frontend/src/components/student/` : UIコンポーネント、デザイン、文言、サムネイル構造の変更
-- `frontend/src/styles/` : カラーパレット、CSS、デザインテーマのカスタマイズ
+- `front/src/components/student/` : UIコンポーネント、デザイン、文言、サムネイル構造の変更
+- `front/src/styles/` : カラーパレット、CSS、デザインテーマのカスタマイズ
+
+体験会では、この2か所を `/lab` のブラウザ上で編集する（ファイルそのものは書きかわらない）。
+ステップ（穴埋め問題）の内容は先生が `front/src/lab/lessons/steps.ts` で編集できる。
 
 ### 🔴 2. システム保護エリア（Protected Internal Area）
 
 システムの安定稼働、通信、動画配信の基盤となる、学生の直接編集を禁止したエリア。
 
-- `frontend/src/api/` & `services/` & `hooks/` : API通信、データ取得、アップロードの隠蔽抽象化レイヤー
+- `front/src/api/` & `services/` & `hooks/` : API通信、データ取得、アップロードの隠蔽抽象化レイヤー
+- `front/src/lab/`（`lessons/steps.ts` を除く）& `components/internal/StudentSlots.tsx` : ブラウザ内 Lab の変換・差し替え・エラー時のフォールバック
 - `server/internal/` : データベース操作、HTTPルーティング、ストリーミング配信処理
 - `docker/` : コンテナインフラ設定
 
 ---
 
-## 🚀 ローカル開発環境の起動手順
+## 🚀 起動手順
 
-本システムは、教室の環境に合わせて「各言語を直接ローカルで動かす手順」と「Dockerを使用する手順」のどちらにも対応している。
+### 体験会（生徒・ブラウザだけ）
+
+Chrome で `https://<フロントのURL>/lab` を開く。準備・当日の流れ・トラブル対応は [`front/体験会手順.md`](./front/体験会手順.md)。
+
+### 開発（先生・開発者）
+
+以下は PC にコードを置いて開発する場合の手順。「各言語を直接ローカルで動かす手順」と「Dockerを使用する手順」のどちらにも対応している。
 
 ### A. 個別ローカル起動（推奨）
 
 #### 1. フロントエンド（React）の起動
 
 ```bash
-cd frontend
+cd front
 npm install
 npm run dev
 ```
@@ -134,7 +161,8 @@ npm run docker:dev
 
 このシステムは以下の用途を考慮して**いない**。コードを複雑化させないため、あえて実装を省略または単純化している。
 
-- インターネット経由での不特定多数への公開、大規模スケール、クラウドネイティブな冗長化
+- インターネット経由での不特定多数への公開、大規模スケール、クラウドネイティブな冗長化（Vercel 配信は体験会の端末準備を省くためであり、利用者はクラス内に限る）
+- 生徒が書いたコードのサーバー保存・共有（コードは各端末のブラウザにだけ保存する）
 - 本格的なユーザー認証（JWTリフレッシュトークン等）や課金、高度なレコメンドアルゴリズム
 - HLS等の高度なセグメント動画エンコード（シンプルなMP4/WebM配信に特化）
 

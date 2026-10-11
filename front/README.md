@@ -1,73 +1,34 @@
-# React + TypeScript + Vite
+# front — VideoShare フロントエンド
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite。Vercel に静的サイトとして配信し、`/api/*` は Vercel のバックエンドへ中継する（`vercel.json`）。
 
-Currently, two official plugins are available:
+## 使い方は 2 通り
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| 目的 | 方法 | 手順 |
+| --- | --- | --- |
+| **体験会（生徒）** | Chrome で `/lab` を開くだけ。インストール不要 | [`体験会手順.md`](./体験会手順.md) |
+| 開発（先生・開発者） | PC でコードを編集して `npm run dev` / Docker | [`実行手順.md`](./実行手順.md), [`DOCKER.md`](./DOCKER.md) |
 
-## React Compiler
+## フォルダ構成
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 場所 | 役割 | 生徒が編集 |
+| --- | --- | --- |
+| `src/components/student/` | 見た目の部品（VideoCard など） | ✅ |
+| `src/styles/` | 色・CSS | ✅ |
+| `src/components/internal/` | ヘッダー・プレイヤー・生徒部品の差し替え口（`StudentSlots.tsx`） | ❌ |
+| `src/pages/` | ページの組み立て | ❌ |
+| `src/hooks/`, `src/services/`, `src/api/` | 通信・状態管理 | ❌ |
+| `src/lab/` | ブラウザ内 Lab（`/lab`）。ステップは `src/lab/lessons/steps.ts` | ❌（ステップは先生が編集可） |
 
-## Expanding the ESLint configuration
+Lab の仕組みとステップの書き方: [`src/lab/README.md`](./src/lab/README.md)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## コマンド
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # http://localhost:5173 （/lab も同じサーバーで動く）
+npm run build    # 型チェック + 本番ビルド
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Vercel の API を使って開発するときは `VITE_REMOTE_BACKEND=true npm run dev`（詳しくは `vite.config.ts`）。

@@ -7,8 +7,7 @@ import { useParams } from "react-router-dom";
 import { useVideos } from "../hooks/useVideos";
 import { useAuth } from "../hooks/useAuth";
 import { useVideoDelete } from "../hooks/useVideoDelete";
-import VideoGrid from "../components/student/VideoGrid";
-import ChannelAvatar from "../components/student/ChannelAvatar";
+import { VideoGrid, ChannelAvatar } from "../components/internal/StudentSlots";
 
 export default function ChannelPage() {
   const { id } = useParams<{ id: string }>();
